@@ -52,7 +52,7 @@ function payToFromVet402(doc: Vet402CheckDocument): `0x${string}` | undefined {
 }
 
 /** Celo mainnet x402 listings vet402 has paid (observatory eip155:42220). */
-const BUILTIN_CANDIDATE_SELLER_URLS = [
+export const BUILTIN_CANDIDATE_SELLER_URLS = [
   "https://gateway.usebuy.ai/v1/social/tiktok/profile",
   "https://gateway.usebuy.ai/v1/social/instagram/profile",
 ] as const;

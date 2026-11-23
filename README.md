@@ -4,6 +4,7 @@
 
 | Item | Value |
 |---|---|
+| Live VetGate HTTP (Vercel) | https://vetgate-celo-orcin.vercel.app |
 | Network | Celo mainnet `42220` (test harness `11142220` in [chain.ts](src/chain.ts)) |
 | PayGuard | `0xde00a2f23792e3cadbf0088a1b93276748a5666c` ([MAINNET_RUN.md](MAINNET_RUN.md)) |
 | Session grant (step 3) | [0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549](https://celoscan.io/tx/0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549) |
@@ -23,6 +24,53 @@ forge test --summary && npm test && npm run check-no-keys
 VETGATE_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93276748a5666c \
   npx tsx scripts/mainnet-run.ts --step 5 --dry
 ```
+
+### Live deployment checks
+
+| Route | Expected |
+|---|---|
+| `GET /health` | `{"ok":true,"network":"mainnet","chainId":42220}` |
+| `GET /v1/stats` | `{"network":"eip155:42220","stats":{...}}` (no Self headers required) |
+| `GET /v1/permit?...` without Self headers | HTTP `401`, JSON error `self_agent_required` |
+| `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, and vet402 fields when ALLOW |
+
+### Self-signed permit demo (read-only HTTP)
+
+```bash
+VETGATE_CELO_NETWORK=mainnet npx tsx scripts/self-permit-demo.ts
+```
+
+Expected JSON shape on stdout (single object):
+
+```json
+{
+  "status": 200,
+  "body": {
+    "tier": "free",
+    "verdict": "ALLOW",
+    "permit": {
+      "payTo": "0x…",
+      "token": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+      "maxAmount": "…",
+      "expiresAt": "…",
+      "nonce": "0x…",
+      "verdictCode": 1,
+      "signature": "0x…"
+    },
+    "vet402": { "recommendation": "ALLOW", "…": "…" }
+  }
+}
+```
+
+After the daily free human quota, the same call may return HTTP `402` with `x402_payment_required` instead of a permit.
+
+### One-shot x402 buyer (default dry)
+
+```bash
+VETGATE_CELO_NETWORK=mainnet npx tsx scripts/buy-once.ts
+```
+
+Prints HTTP `402` `accepts[]`, the selected Celo mainnet exact offer, and an EIP-3009 signing preview. Live payment requires `--i-understand-mainnet` and records `buy_purchase` in [MAINNET_RUN.md](MAINNET_RUN.md).
 
 Mainnet scripts require `--i-understand-mainnet` for live broadcast. See [MAINNET_RUN.md](MAINNET_RUN.md) for the full tx table.
 

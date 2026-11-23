@@ -12,7 +12,9 @@
     "gen-testnet-key": "tsx scripts/gen-testnet-key.ts",
     "mainnet-plan": "tsx scripts/mainnet-plan.ts",
     "mainnet-daily": "node --import ./scripts/register-relay-attribution.mjs ./node_modules/tsx/dist/cli.mjs scripts/daily.ts",
-    "check-no-keys": "node scripts/check-no-keys.mjs"
+    "check-no-keys": "node scripts/check-no-keys.mjs",
+    "self-permit-demo": "tsx scripts/self-permit-demo.ts",
+    "buy-once": "tsx scripts/buy-once.ts"
   },
   "engines": {
     "node": "24.x"

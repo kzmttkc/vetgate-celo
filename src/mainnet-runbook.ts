@@ -36,7 +36,8 @@ export type MainnetRunStepId =
   | "demo_allow_payment"
   | "demo_block_revert"
   | "revoke_session"
-  | "daily_small_use";
+  | "daily_small_use"
+  | "buy_purchase";
 
 export type MainnetRunStep = {
   id: MainnetRunStepId;
