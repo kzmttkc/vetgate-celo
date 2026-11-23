@@ -135,7 +135,7 @@ export function defineMainnetRunSteps(payGuardPlaceholder: `0x${string}`): Mainn
       order: 3,
       title: "Create Altana buyer wallet + grantSession",
       description:
-        "grantSession: calls=[PayGuard], spend cap 1 USDC/day, expiry 7d, feeToken USDC; relay txs tagged via execute calldata suffix.",
+        "Altana admin (0xCDb0…, nonce 0) createWallet + grantSession; oracle 0x970b… funds USDC; calls=[PayGuard], spend cap 1 USDC/day.",
       usdcDelta: 0n,
     },
     {

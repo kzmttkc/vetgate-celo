@@ -3,7 +3,7 @@
  * Stepwise mainnet executor. Requires funding + `--i-understand-mainnet` (except `--dry`).
  * Refuses any single USDC transfer above 1 USDC (1_000_000 units).
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveAttributionCode } from "../src/chain.js";
@@ -36,17 +36,32 @@ function parseArgs(argv: string[]): CliArgs {
   };
 }
 
-function loadAdminKey(): `0x${string}` {
-  const fromEnv = process.env.VETGATE_ORACLE_SIGNER_PK;
-  if (fromEnv) return fromEnv as `0x${string}`;
-  const path = join(process.cwd(), ".secrets", "mainnet-admin.key");
+function readSecretKey(relPath: string): `0x${string}` {
+  const path = join(process.cwd(), relPath);
+  if (!existsSync(path)) {
+    throw new Error(`missing key file: ${relPath} (set env override or create under .secrets/)`);
+  }
   return readFileSync(path, "utf8").trim() as `0x${string}`;
 }
 
-function loadSelfAgentKey(adminPk: `0x${string}`): `0x${string}` {
+function loadOracleKey(): `0x${string}` {
+  if (process.env.VETGATE_ORACLE_SIGNER_PK) {
+    return process.env.VETGATE_ORACLE_SIGNER_PK as `0x${string}`;
+  }
+  return readSecretKey(".secrets/mainnet-admin.key");
+}
+
+function loadAltanaKey(): `0x${string}` {
+  if (process.env.VETGATE_ALTANA_ADMIN_PK) {
+    return process.env.VETGATE_ALTANA_ADMIN_PK as `0x${string}`;
+  }
+  return readSecretKey(".secrets/altana-admin.key");
+}
+
+function loadSelfAgentKey(oraclePk: `0x${string}`): `0x${string}` {
   const fromEnv = process.env.VETGATE_SELF_AGENT_PK;
   if (fromEnv) return fromEnv as `0x${string}`;
-  return adminPk;
+  return oraclePk;
 }
 
 async function main(): Promise<void> {
@@ -75,9 +90,10 @@ async function main(): Promise<void> {
       (args.dry ? " [DRY]" : ""),
   );
 
-  const adminPk = loadAdminKey();
+  const oraclePk = loadOracleKey();
+  const altanaPk = loadAltanaKey();
   const vetgateUrl = process.env.VETGATE_URL ?? "http://localhost:3001";
-  const selfAgentPk = loadSelfAgentKey(adminPk);
+  const selfAgentPk = loadSelfAgentKey(oraclePk);
 
   process.env.VETGATE_CELO_NETWORK = process.env.VETGATE_CELO_NETWORK ?? "mainnet";
   process.env.VETGATE_ALTANA_MOCK = "0";
@@ -87,7 +103,8 @@ async function main(): Promise<void> {
     daily: args.daily,
     allowTestnet: args.allowTestnet,
     payGuard,
-    adminPk,
+    oraclePk,
+    altanaPk,
     vetgateUrl,
     selfAgentPk,
   });

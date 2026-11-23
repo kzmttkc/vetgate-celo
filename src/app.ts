@@ -115,7 +115,7 @@ export function createApp(cfg: CreateAppConfig): Express {
         },
       },
       description:
-        "VetGate Celo Sepolia oracle: vet402 seller check and EIP-712 VetGatePermit for VetGatePayGuard.",
+        `VetGate Celo ${celo.network} oracle: vet402 seller check and EIP-712 VetGatePermit for VetGatePayGuard.`,
       mimeType: "application/json",
       extensions: declareDiscoveryExtension({
         input: {

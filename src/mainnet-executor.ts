@@ -31,9 +31,12 @@ import {
   CELO_MAINNET_CHAIN_ID,
   CELO_MAINNET_USDC,
   MAINNET_ADMIN_ADDRESS,
+  MAINNET_ALTANA_ADMIN_ADDRESS,
+  MAINNET_CONTROLLED_SELLER_NOTE,
   resolveAttributionCode,
   resolveCeloRuntime,
 } from "./chain.js";
+import { printRelayQuote } from "./mainnet-quote.js";
 import {
   appendTxRow,
   assertStepNotDone,
@@ -73,7 +76,10 @@ export type MainnetRunOptions = {
   daily: boolean;
   allowTestnet: boolean;
   payGuard: `0x${string}`;
-  adminPk: `0x${string}`;
+  /** Oracle / Self / ERC-8004 admin (0x970b…). */
+  oraclePk: `0x${string}`;
+  /** Altana buyer-wallet admin — never-used EOA (0xCDb0…). */
+  altanaPk: `0x${string}`;
   vetgateUrl: string;
   selfAgentPk: `0x${string}`;
   fundUsdcUnits?: bigint;
@@ -163,7 +169,7 @@ function persistSessionKey(
   upsertRunMetadata("buyer_wallet", walletAddress);
 }
 
-function loadBuyerSession(adminPk: `0x${string}`): {
+function loadBuyerSession(): {
   client: Client;
   session: Session;
   walletAddress: `0x${string}`;
@@ -184,7 +190,13 @@ export async function runMainnetStep(
 ): Promise<void> {
   assertMainnetChain(opts.allowTestnet);
   const runtime = resolveCeloRuntime();
-  const adminAccount = privateKeyToAccount(opts.adminPk);
+  const oracleAccount = privateKeyToAccount(opts.oraclePk);
+  const altanaAccount = privateKeyToAccount(opts.altanaPk);
+  if (altanaAccount.address.toLowerCase() !== MAINNET_ALTANA_ADMIN_ADDRESS.toLowerCase()) {
+    throw new Error(
+      `refused: Altana admin must be ${MAINNET_ALTANA_ADMIN_ADDRESS} (got ${altanaAccount.address})`,
+    );
+  }
   const tag = resolveAttributionCode();
   const fundUnits = opts.fundUsdcUnits ?? DEFAULT_FUND_UNITS;
   assertUsdcWithinCap(fundUnits, stepId);
@@ -203,18 +215,18 @@ export async function runMainnetStep(
       return;
     }
     const walletClient = createWalletClient({
-      account: adminAccount,
+      account: oracleAccount,
       chain: celo,
       transport: http(runtime.rpc),
     });
-    const data = buildDeployPayGuardCalldata(adminAccount.address);
+    const data = buildDeployPayGuardCalldata(oracleAccount.address);
     const hash = await walletClient.sendTransaction({ data, value: 0n });
     appendTxRow(stepId, hash, "PayGuard CREATE + ERC-8021 suffix");
     return;
   }
 
   if (stepId === "register_erc8004_seller") {
-    if (await erc8004SkipRegister(adminAccount.address)) {
+    if (await erc8004SkipRegister(oracleAccount.address)) {
       console.log(`skip: already ${MAINNET_EXISTING_ERC8004_AGENT_ID}`);
       if (!isStepDone(stepId)) {
         appendTxRow(stepId, "0xskipped", `skip: already ${MAINNET_EXISTING_ERC8004_AGENT_ID}`);
@@ -223,7 +235,7 @@ export async function runMainnetStep(
     }
     if (guardOnce) assertStepNotDone(stepId);
     const client = createClient({ chains: [CELO], agentIdentity: false });
-    const admin = signerFromPrivateKey(opts.adminPk);
+    const admin = signerFromPrivateKey(opts.oraclePk);
     const wallet = await client.createWallet({ signer: admin });
     const call = buildErc8004RegisterCall(CELO_MAINNET_CHAIN_ID, MAINNET_AGENT_URI, [
       {
@@ -253,9 +265,9 @@ export async function runMainnetStep(
     if (guardOnce) assertStepNotDone(stepId);
     const sessionPk = (process.env.VETGATE_SESSION_PK ?? generatePrivateKey()) as `0x${string}`;
     const client = createClient({ chains: [CELO], agentIdentity: false });
-    const admin = signerFromPrivateKey(opts.adminPk);
+    const altanaSigner = signerFromPrivateKey(opts.altanaPk);
     const sessionSigner = signerFromPrivateKey(sessionPk);
-    const wallet = await client.createWallet({ signer: admin });
+    const wallet = await client.createWallet({ signer: altanaSigner });
     const transferData = appendAttributionSuffix(
       encodeFunctionData({
         abi: ERC20_ABI,
@@ -267,7 +279,10 @@ export async function runMainnetStep(
     const permissions = sessionPermissions(opts.payGuard);
 
     if (opts.dry) {
-      printDryCall("createWallet", { admin: adminAccount.address, buyerWallet: wallet.address });
+      printDryCall("createWallet", {
+        altanaAdmin: altanaAccount.address,
+        buyerWallet: wallet.address,
+      });
       printDryCall("fund_usdc", {
         token: CELO_MAINNET_USDC,
         from: MAINNET_ADMIN_ADDRESS,
@@ -286,14 +301,14 @@ export async function runMainnetStep(
       try {
         const quote = await client.quoteGrantSession({
           wallet,
-          signer: admin,
+          signer: altanaSigner,
           sessionSigner,
           chainId: CELO_MAINNET_CHAIN_ID,
           feeToken: CELO_MAINNET_USDC,
           permissions,
           expiry,
         });
-        printDryCall("quoteGrantSession", { status: quote.status, legs: quote.legs?.length ?? 0 });
+        printRelayQuote("quoteGrantSession", quote);
       } catch (err) {
         printDryCall("quoteGrantSession", {
           error: err instanceof Error ? err.message : String(err),
@@ -307,12 +322,12 @@ export async function runMainnetStep(
     }
 
     const walletClient = createWalletClient({
-      account: adminAccount,
+      account: oracleAccount,
       chain: celo,
       transport: http(runtime.rpc),
     });
     // Altana wallets are the admin EOA itself (EIP-7702), so there is nothing to fund when the addresses match.
-    if (wallet.address.toLowerCase() !== adminAccount.address.toLowerCase()) {
+    if (wallet.address.toLowerCase() !== altanaAccount.address.toLowerCase()) {
       const fundHash = await walletClient.sendTransaction({
         to: CELO_MAINNET_USDC,
         data: transferData as Hex,
@@ -322,7 +337,7 @@ export async function runMainnetStep(
 
     const grant = await client.grantSession({
       wallet,
-      signer: admin,
+      signer: altanaSigner,
       sessionSigner,
       chainId: CELO_MAINNET_CHAIN_ID,
       feeToken: CELO_MAINNET_USDC,
@@ -337,7 +352,7 @@ export async function runMainnetStep(
     return;
   }
 
-  const { client, session, walletAddress } = loadBuyerSession(opts.adminPk);
+  const { client, session, walletAddress } = loadBuyerSession();
 
   if (stepId === "demo_allow_payment") {
     if (guardOnce) assertStepNotDone(stepId);
@@ -346,6 +361,9 @@ export async function runMainnetStep(
     assertSellerNotAdmin(seller.payTo);
     upsertRunMetadata("demo_seller_payto", seller.payTo);
     upsertRunMetadata("demo_seller_source", seller.source);
+    if (seller.source === "controlled") {
+      upsertRunMetadata("demo_seller_note", MAINNET_CONTROLLED_SELLER_NOTE);
+    }
 
     if (opts.dry) {
       const tagged = buildPayWithPermitCalldata({
@@ -368,7 +386,7 @@ export async function runMainnetStep(
           chainId: CELO_MAINNET_CHAIN_ID,
           feeToken: CELO_MAINNET_USDC,
         });
-        printDryCall("quoteExecute", { quote });
+        printRelayQuote("quoteExecute", quote);
       } catch (e) {
         printDryCall("quoteExecute", { error: String(e) });
       }
@@ -417,6 +435,17 @@ export async function runMainnetStep(
         data: tagged,
         gasCap: (opts.blockGasCap ?? DEFAULT_BLOCK_GAS).toString(),
       });
+      try {
+        const quote = await client.quoteExecute({
+          session,
+          calls: [{ to: opts.payGuard, data: tagged }],
+          chainId: CELO_MAINNET_CHAIN_ID,
+          feeToken: CELO_MAINNET_USDC,
+        });
+        printRelayQuote("quoteExecute", quote);
+      } catch (e) {
+        printDryCall("quoteExecute", { error: String(e) });
+      }
       await publicClient()
         .call({
           account: walletAddress,
@@ -447,17 +476,17 @@ export async function runMainnetStep(
 
   if (stepId === "revoke_session") {
     if (guardOnce) assertStepNotDone(stepId);
-    const admin = signerFromPrivateKey(opts.adminPk);
+    const altanaSigner = signerFromPrivateKey(opts.altanaPk);
     const wallet = { address: walletAddress };
     if (opts.dry) {
       const quote = await client.quoteRevokeSession({
         wallet,
-        signer: admin,
+        signer: altanaSigner,
         session,
         chainId: CELO_MAINNET_CHAIN_ID,
         feeToken: CELO_MAINNET_USDC,
       });
-      printDryCall("revokeSession", { status: quote.status });
+      printRelayQuote("quoteRevokeSession", quote);
       const probe = buildPayWithPermitCalldata({
         payGuard: opts.payGuard,
         payTo: MAINNET_ADMIN_ADDRESS,
@@ -479,7 +508,7 @@ export async function runMainnetStep(
 
     const revoked = await client.revokeSession({
       wallet,
-      signer: admin,
+      signer: altanaSigner,
       session,
       chainId: CELO_MAINNET_CHAIN_ID,
       feeToken: CELO_MAINNET_USDC,

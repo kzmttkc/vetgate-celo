@@ -1,6 +1,7 @@
 import {
   CELO_MAINNET_CHAIN_ID,
   MAINNET_ADMIN_ADDRESS,
+  MAINNET_CONTROLLED_SELLER_NOTE,
   MAINNET_CONTROLLED_SELLER_PAYTO,
   MAINNET_CONTROLLED_SELLER_URL,
 } from "./chain.js";
@@ -35,15 +36,41 @@ function payToFromVet402(doc: Vet402CheckDocument): `0x${string}` | undefined {
     const payTo = String(d.payTo ?? d.pay_to ?? "");
     if (payTo.startsWith("0x")) return payTo as `0x${string}`;
   }
+  const terms = doc.verified_terms;
+  if (terms && typeof terms === "object") {
+    const t = terms as Record<string, unknown>;
+    const net = String(t.network ?? "").toLowerCase();
+    const payTo = String(t.pay_to ?? t.payTo ?? "");
+    if (
+      payTo.startsWith("0x") &&
+      (net.includes("42220") || net.includes("celo") || net === "eip155:42220")
+    ) {
+      return payTo as `0x${string}`;
+    }
+  }
   return undefined;
 }
+
+/** Celo mainnet x402 listings vet402 has paid (observatory eip155:42220). */
+const BUILTIN_CANDIDATE_SELLER_URLS = [
+  "https://gateway.usebuy.ai/v1/social/tiktok/profile",
+  "https://gateway.usebuy.ai/v1/social/instagram/profile",
+] as const;
 
 function defaultSellerUrlCandidates(): string[] {
   const fromEnv = (process.env.VETGATE_MAINNET_SELLER_URLS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.startsWith("https://"));
-  return fromEnv;
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const url of [...fromEnv, ...BUILTIN_CANDIDATE_SELLER_URLS]) {
+    const key = url.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(url);
+  }
+  return merged;
 }
 
 /**

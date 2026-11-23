@@ -21,19 +21,26 @@ export const DEFAULT_FACILITATOR_URL = CELO_SEPOLIA_FACILITATOR_URL;
 /** Loops enrollment ERC-8021 code (mainnet submissions). */
 export const PLACEHOLDER_ATTRIBUTION_TAG = "celo_56284feb7672" as const;
 
-/** Funded admin for mainnet runbook (public address; key in `.secrets/mainnet-admin.key`). */
+/** Oracle signer, Self agent 194, ERC-8004 #9907 (`/.secrets/mainnet-admin.key`). */
 export const MAINNET_ADMIN_ADDRESS = "0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435" as const;
 
+/** Fresh EOA for Altana createWallet EIP-7702 auth at nonce 0 (`.secrets/altana-admin.key`). */
+export const MAINNET_ALTANA_ADMIN_ADDRESS =
+  "0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941" as const;
+
 /**
- * Team-controlled payTo when vet402 has no ALLOW Celo x402 seller (see `VETGATE_TEAM_WALLETS`).
- * Must not equal {@link MAINNET_ADMIN_ADDRESS}.
+ * Operator-controlled demo payTo when no vet402 ALLOW Celo seller is found.
+ * Oracle signer remains {@link MAINNET_ADMIN_ADDRESS}; not used as payTo.
  */
 export const MAINNET_CONTROLLED_SELLER_PAYTO =
   "0x1111111111111111111111111111111111111111" as const;
 
-/** vet402 check URL paired with {@link MAINNET_CONTROLLED_SELLER_PAYTO} (documented fallback). */
+/** Documented fallback when vet402 has no ALLOW listing on Celo mainnet. */
 export const MAINNET_CONTROLLED_SELLER_URL =
-  "https://vetgate-celo.local/controlled-seller-fallback" as const;
+  "https://vetgate-celo.local/operator-controlled-demo-seller" as const;
+
+export const MAINNET_CONTROLLED_SELLER_NOTE =
+  "operator-controlled demo seller (oracle 0x970b…435, not x402 catalog)" as const;
 
 export type VetgateCeloNetwork = "testnet" | "mainnet";
 
