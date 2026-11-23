@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
-import { CELO_MAINNET_USDC } from "../src/chain.js";
+import { CELO_MAINNET_CAIP2, CELO_MAINNET_USDC } from "../src/chain.js";
 import {
   assertBuyOncePriceCap,
   buildEip3009SignPreview,
+  createBuyOnceX402Client,
   isCeloMainnetNetwork,
   parseUsdcUnits,
   selectCeloMainnetAccept,
@@ -58,5 +60,32 @@ describe("x402 buy-once guards", () => {
     expect(preview.primaryType).toBe("TransferWithAuthorization");
     expect(preview.domain.verifyingContract.toLowerCase()).toBe(CELO_MAINNET_USDC.toLowerCase());
     expect(preview.message.value).toBe("5000");
+  });
+
+  it("registers x402 v2 exact EVM client for eip155:42220", async () => {
+    const account = privateKeyToAccount(generatePrivateKey());
+    const client = createBuyOnceX402Client(account);
+    const payload = await client.createPaymentPayload({
+      x402Version: 2,
+      resource: {
+        url: "https://gateway.usebuy.ai/v1/social/tiktok/profile",
+        description: "Return public TikTok profile data by username.",
+        mimeType: "application/json",
+      },
+      accepts: [
+        {
+          scheme: "exact",
+          network: CELO_MAINNET_CAIP2,
+          amount: "5000",
+          asset: CELO_MAINNET_USDC,
+          payTo: "0x20faAca5F980E29639A0FCC6dcA6988E18ed333B",
+          maxTimeoutSeconds: 300,
+          extra: { name: "USDC", version: "2" },
+        },
+      ],
+    });
+    expect(payload.x402Version).toBe(2);
+    expect(payload.accepted?.network).toBe(CELO_MAINNET_CAIP2);
+    expect(payload.accepted?.amount).toBe("5000");
   });
 });

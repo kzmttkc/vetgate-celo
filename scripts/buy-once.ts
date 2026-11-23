@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const payer = privateKeyToAccount(pk).address;
 
   if (dry) {
-    const result = await runBuyOnceDry({ payer });
+    const result = await runBuyOnceDry({ payer, payerPrivateKey: pk });
     console.log(
       JSON.stringify(
         {
@@ -35,6 +35,7 @@ async function main(): Promise<void> {
           paymentRequired: result.quote.paymentRequired,
           selectedAccept: result.quote.accept,
           eip3009SignPreview: result.eip3009,
+          paymentPayloadV2: result.paymentPayloadV2,
         },
         null,
         2,

@@ -1,13 +1,15 @@
 import { x402Client } from "@x402/core/client";
 import { x402HTTPClient } from "@x402/core/http";
-import { ExactEvmSchemeV1 } from "@x402/evm/v1";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { toClientEvmSigner } from "@x402/evm";
 import { keccak256, stringToHex, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 
 import {
   CELO_MAINNET_CAIP2,
   CELO_MAINNET_CHAIN_ID,
+  CELO_MAINNET_RPC,
   CELO_MAINNET_USDC,
   resolveAttributionCode,
   resolveCeloRuntime,
@@ -91,6 +93,86 @@ export function assertBuyOncePriceCap(units: bigint): void {
       `refused: price ${units} units exceeds cap ${BUY_ONCE_MAX_USDC_UNITS} (0.05 USDC)`,
     );
   }
+}
+
+export function paymentRequirementUnits(requirement: PaymentRequirements): bigint {
+  const raw =
+    requirement.amount ??
+    ("maxAmountRequired" in requirement
+      ? (requirement as PaymentRequirements & { maxAmountRequired?: string }).maxAmountRequired
+      : undefined);
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new Error(`invalid payment amount: ${String(raw)}`);
+  }
+  return BigInt(raw);
+}
+
+/** Restricts accepts to exact Celo mainnet offers within the 0.05 USDC cap. */
+export function buyOncePaymentPolicy(
+  _version: number,
+  requirements: PaymentRequirements[],
+): PaymentRequirements[] {
+  return requirements.filter((requirement) => {
+    if (requirement.scheme !== "exact") return false;
+    if (!isCeloMainnetNetwork(requirement.network)) return false;
+    try {
+      assertBuyOncePriceCap(paymentRequirementUnits(requirement));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+export function createBuyOnceX402Client(account: PrivateKeyAccount): x402Client {
+  const client = new x402Client();
+  client.setSpendControls({ maxAmountPerPayment: "0.05" });
+  registerExactEvmScheme(client, {
+    signer: toClientEvmSigner(account),
+    networks: [CELO_MAINNET_CAIP2],
+    schemeOptions: { rpcUrl: CELO_MAINNET_RPC },
+    policies: [buyOncePaymentPolicy],
+  });
+  return client;
+}
+
+export async function buildBuyOnceV2PaymentPayload(params: {
+  requestUrl: string;
+  payerPrivateKey: `0x${string}`;
+  fetchImpl?: typeof fetch;
+}): Promise<PaymentPayload> {
+  const fetchImpl = params.fetchImpl ?? fetch;
+  const account = privateKeyToAccount(params.payerPrivateKey);
+  const coreClient = createBuyOnceX402Client(account);
+  const httpClient = new x402HTTPClient(coreClient);
+
+  const response = await fetchImpl(params.requestUrl, { method: "GET" });
+  if (response.status !== 402) {
+    throw new Error(`expected HTTP 402 before payment payload build, got ${response.status}`);
+  }
+
+  const bodyText = await response.text();
+  const paymentRequired = httpClient.getPaymentRequiredResponse(
+    (name) => response.headers.get(name),
+    JSON.parse(bodyText),
+  );
+
+  if (paymentRequired.x402Version !== 2) {
+    throw new Error(`expected x402 v2 payment required, got version ${paymentRequired.x402Version}`);
+  }
+
+  const payload = await httpClient.createPaymentPayload(paymentRequired);
+  if (payload.x402Version !== 2) {
+    throw new Error(`expected x402 v2 payment payload, got version ${payload.x402Version}`);
+  }
+
+  const accepted = payload.accepted;
+  if (!accepted || !isCeloMainnetNetwork(accepted.network)) {
+    throw new Error(`refused: payment payload network ${accepted?.network ?? "missing"} is not Celo mainnet`);
+  }
+  assertBuyOncePriceCap(paymentRequirementUnits(accepted));
+
+  return payload;
 }
 
 export function selectCeloMainnetAccept(
@@ -226,15 +308,23 @@ export type BuyOnceDryResult = {
   mode: "dry";
   quote: SelectedX402Quote;
   eip3009: Eip3009SignPreview;
+  paymentPayloadV2: PaymentPayload;
 };
 
 export async function runBuyOnceDry(params: {
   payer: `0x${string}`;
+  payerPrivateKey: `0x${string}`;
   fetchImpl?: typeof fetch;
 }): Promise<BuyOnceDryResult> {
-  const quote = await discoverCheapestUsefulQuote(params.fetchImpl ?? fetch);
+  const fetchImpl = params.fetchImpl ?? fetch;
+  const quote = await discoverCheapestUsefulQuote(fetchImpl);
   const eip3009 = buildEip3009SignPreview({ accept: quote.accept, payer: params.payer });
-  return { mode: "dry", quote, eip3009 };
+  const paymentPayloadV2 = await buildBuyOnceV2PaymentPayload({
+    requestUrl: quote.requestUrl,
+    payerPrivateKey: params.payerPrivateKey,
+    fetchImpl,
+  });
+  return { mode: "dry", quote, eip3009, paymentPayloadV2 };
 }
 
 export async function runBuyOnceLive(params: {
@@ -246,7 +336,7 @@ export async function runBuyOnceLive(params: {
   const account = privateKeyToAccount(params.payerPrivateKey);
   const quote = await discoverCheapestUsefulQuote(fetchImpl);
 
-  const coreClient = new x402Client().registerV1("celo", new ExactEvmSchemeV1(toClientEvmSigner(account)));
+  const coreClient = createBuyOnceX402Client(account);
   const httpClient = new x402HTTPClient(coreClient);
 
   let response = await fetchImpl(quote.requestUrl, { method: "GET" });
