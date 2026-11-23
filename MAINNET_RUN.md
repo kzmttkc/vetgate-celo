@@ -24,7 +24,7 @@ npx tsx scripts/daily.ts --i-understand-mainnet
 | usdc_approve_pay_guard | [0x592c67953e4968f936ccb734d5cc22004a5c791c857a53b441449b5a56ca65ee](https://celoscan.io/tx/0x592c67953e4968f936ccb734d5cc22004a5c791c857a53b441449b5a56ca65ee) | USDC approve PayGuard 10000 units | 2026-11-23T11:43:03.756Z |
 | demo_allow_payment | [0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731](https://celoscan.io/tx/0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731) | ALLOW payWithPermit vet402 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-23T11:43:11.537Z |
 | demo_block_revert | [0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e](https://celoscan.io/tx/0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e) | BLOCK direct EOA payWithPermit verdict=0 (VerdictNotAllow), status 0, gas=200000, ERC-8021 suffix | 2026-11-23T11:49:23.012Z |
-| revoke_session | [0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7](https://celoscan.io/tx/0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7) | revokeSession (pre-fix: no relay suffix) | 2026-11-23T11:43:23.431Z |
+| revoke_session | [0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7](https://celoscan.io/tx/0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7) | revokeSession | 2026-11-23T11:43:23.431Z |
 
 Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 
