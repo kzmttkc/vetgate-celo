@@ -31,8 +31,8 @@ Mainnet scripts require `--i-understand-mainnet` for live broadcast. See [MAINNE
 | Actor | Wallet | Role on chain |
 |---|---|---|
 | Operator / oracle | `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435` | PayGuard oracle signer, Self agent 194, ERC-8004 token 9907, VetGate oracle HTTP |
-| Independent buyer admin | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` | Altana EIP-7702 buyer, grantSession, execute, revokeSession, step 5 direct BLOCK tx |
-| vet402 seller payTo | `0x20faaca5f980e29639a0fcc6dca6988e18ed333b` | ALLOW demo payments only when vet402 lists ALLOW on Celo |
+| Buyer admin (operated by me, separate key) | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` | Altana EIP-7702 buyer, grantSession, execute, revokeSession, step 5 direct BLOCK tx |
+| Third-party x402 seller payTo (gateway.usebuy.ai) | `0x20faaca5f980e29639a0fcc6dca6988e18ed333b` | Receives the ALLOW payment. vet402's public check returned ALLOW for this seller |
 
 The operator wallet mints permits and deploys PayGuard. The buyer admin wallet is a separate EOA that holds the session key material under `.secrets/session.key`. Neither wallet is the vet402 seller payTo.
 
