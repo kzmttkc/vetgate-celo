@@ -38,4 +38,6 @@ Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 - oracle_signer: `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435`
 - altana_admin: `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941`
 - erc8004_agent: `9907` (step 2 skip)
+- self_agent: `194` (https://agent-api.self.xyz/api/agent/info/42220/194)
+- erc8004_scan: https://8004scan.io/9907
 - demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile` (vet402 ALLOW → payTo on Celo)
