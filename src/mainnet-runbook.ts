@@ -178,7 +178,7 @@ export function defineMainnetRunSteps(payGuardPlaceholder: `0x${string}`): Mainn
       id: "daily_small_use",
       order: 7,
       title: "Daily small-use loop (10–14 days)",
-      description: `Repeat ALLOW payment ≤ $0.01 USDC (${dailyUsdc} units) or buy CLI purchase; each operator tx tagged ${tag}.`,
+      description: `Once per UTC day: vet402 ALLOW, oracle mints permit, operator EOA ${MAINNET_ADMIN_ADDRESS} sends tagged payWithPermit (${dailyUsdc} units) direct to PayGuard (no Altana session).`,
       usdcDelta: dailyUsdc,
     },
   ];

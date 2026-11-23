@@ -101,6 +101,9 @@ export function assertSellerNotAdmin(payTo: `0x${string}`): void {
 
 export const MAINNET_DEMO_PAYMENT_UNITS = 10_000n;
 
+/** Max USDC allowance approved to PayGuard in the daily operator loop (0.05 USDC). */
+export const MAINNET_DAILY_USDC_APPROVE_CAP = 50_000n;
+
 export function assertMainnetDemoAmount(amount: bigint): void {
   if (amount > MAINNET_DEMO_PAYMENT_UNITS) {
     throw new Error(

@@ -1,7 +1,7 @@
 #!/usr/bin/env npx tsx
 /**
- * Idempotent daily small-use loop (MAINNET_RUN.md UTC day).
- * Intended for launchd/cron — owner reviews before enabling live sends.
+ * Idempotent daily operator payWithPermit (MAINNET_RUN.md UTC day).
+ * vet402 ALLOW + locally minted permit from oracle key, no Altana re-grant.
  */
 import { spawnSync } from "node:child_process";
 

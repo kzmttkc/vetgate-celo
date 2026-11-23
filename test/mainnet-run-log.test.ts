@@ -37,6 +37,11 @@ describe("MAINNET_RUN.md idempotency", () => {
     expect(isDailyPaymentDoneUtc("2026-11-24", SAMPLE_LOG)).toBe(false);
   });
 
+  it("treats skipped-not-ALLOW rows as done for that UTC day", () => {
+    const skipped = `${SAMPLE_LOG}| daily_small_use | \`0xskipped\` | skipped: not ALLOW utc=2026-11-24 | 2026-11-24T00:00:00.000Z |\n`;
+    expect(isDailyPaymentDoneUtc("2026-11-24", skipped)).toBe(true);
+  });
+
   it("utcDayStamp is YYYY-MM-DD", () => {
     expect(utcDayStamp(new Date("2026-11-23T23:59:00.000Z"))).toBe("2026-11-23");
   });

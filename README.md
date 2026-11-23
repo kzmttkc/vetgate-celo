@@ -26,6 +26,8 @@ VETGATE_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93
 
 Mainnet scripts require `--i-understand-mainnet` for live broadcast. See [MAINNET_RUN.md](MAINNET_RUN.md) for the full tx table.
 
+The Altana session demo is mainnet steps 3 to 6. The daily loop (`scripts/daily.ts`, step 7) pays 0.01 USDC from the operator wallet after a public vet402 ALLOW check and a locally minted oracle permit (no Altana session or VetGate HTTP). Daily on-chain traffic is intentional operator use, not buyer-session automation.
+
 ## Accounting (operator vs independent)
 
 | Actor | Wallet | Role on chain |
@@ -46,7 +48,7 @@ The operator wallet mints permits and deploys PayGuard. The buyer admin wallet i
 | x402 facilitator wiring | [chain.ts](src/chain.ts#L15-L16), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
 | ERC-8021 on relay + calls | [attributed-altana-client.ts](src/attributed-altana-client.ts), [attribution.ts](src/attribution.ts) |
 | Mainnet step runner | [mainnet-executor.ts](src/mainnet-executor.ts), [scripts/mainnet-run.ts](scripts/mainnet-run.ts) |
-| Daily idempotent loop | [scripts/daily.ts](scripts/daily.ts), [mainnet-executor.ts](src/mainnet-executor.ts) daily step |
+| Daily idempotent loop | [scripts/daily.ts](scripts/daily.ts), operator EOA `payWithPermit` in [mainnet-executor.ts](src/mainnet-executor.ts) step 7 |
 | Vercel deploy | [vercel.json](vercel.json), [api/index.ts](api/index.ts), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
 | Fly deploy (optional) | [fly.toml](fly.toml), [Dockerfile](Dockerfile), health [app.ts](src/app.ts) |
 | Secret leak guard | [scripts/check-no-keys.mjs](scripts/check-no-keys.mjs) |
@@ -76,7 +78,7 @@ Local dev: `npm start` (reads `.secrets/` when `VETGATE_ORACLE_SIGNER_PK` is uns
 | File | Address | Use |
 |---|---|---|
 | `.secrets/mainnet-admin.key` | 0x970b…0435 | Oracle signer, Self agent, ERC-8004 #9907 |
-| `.secrets/altana-admin.key` | 0xCDb0…9941 | Altana admin for steps 3 to 7 |
+| `.secrets/altana-admin.key` | 0xCDb0…9941 | Altana admin for steps 3 to 6 |
 | `.secrets/session.key` | generated | Session key after grant |
 
 Vercel production sets `VETGATE_ORACLE_SIGNER_PK` and related env from the Vercel project settings (see `.env.example`).

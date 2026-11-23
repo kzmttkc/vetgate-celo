@@ -18,7 +18,6 @@ import {
   createWalletClient,
   encodeFunctionData,
   http,
-  keccak256,
   parseAbi,
   toFunctionSelector,
   type Hex,
@@ -69,6 +68,7 @@ import {
 import {
   assertMainnetDemoAmount,
   assertSellerNotAdmin,
+  MAINNET_DAILY_USDC_APPROVE_CAP,
   MAINNET_DEMO_PAYMENT_UNITS,
   resolveMainnetSellerPayTo,
 } from "./mainnet-seller.js";
@@ -111,11 +111,6 @@ const DEFAULT_FUND_UNITS = 200_000n;
 /** Fixed gas for on-chain BLOCK demo from Altana admin EOA (verdict revert must land on chain). */
 export const BLOCK_DIRECT_GAS = 200_000n;
 const DEFAULT_BLOCK_GAS = BLOCK_DIRECT_GAS;
-const ONE_CELO_WEI = 1_000_000_000_000_000_000n;
-
-const KEYSTORE_ABI = parseAbi([
-  "function isValidKey(address user, bytes32 keyId) view returns (bool)",
-]);
 
 export function assertMainnetChain(allowTestnet: boolean): void {
   const runtime = resolveCeloRuntime();
@@ -140,6 +135,32 @@ function printDryCall(label: string, detail: Record<string, unknown>): void {
   console.log(
     `[dry] ${label}: ${JSON.stringify(detail, (_, v) => (typeof v === "bigint" ? v.toString() : v))}`,
   );
+}
+
+/** Gas used by mainnet demo_allow_payment payWithPermit (allowance already set). */
+const REFERENCE_PAY_WITH_PERMIT_GAS = 229_254n;
+
+async function printDryEoaTx(
+  label: string,
+  from: `0x${string}`,
+  to: `0x${string}`,
+  data: Hex,
+  opts?: { gasFallback?: bigint },
+): Promise<void> {
+  printDryCall(label, { from, to, data });
+  const gas = await publicClient()
+    .estimateGas({ account: from, to, data })
+    .catch(() => undefined);
+  if (gas !== undefined) {
+    printDryCall(`${label}_estimateGas`, { gas: gas.toString() });
+    return;
+  }
+  if (opts?.gasFallback !== undefined) {
+    printDryCall(`${label}_estimateGas`, {
+      gas: opts.gasFallback.toString(),
+      source: "reference (rpc cannot simulate before approve)",
+    });
+  }
 }
 
 async function erc8004SkipRegister(admin: `0x${string}`): Promise<boolean> {
@@ -334,118 +355,6 @@ function loadBuyerSession(): {
   return { client: buyerClient(), session, walletAddress };
 }
 
-function grantQuoteNativeFee(quote: unknown): bigint {
-  const q = quote as {
-    maxFee?: bigint;
-    fee?: bigint;
-    lines?: Array<{ fee?: bigint; maxFee?: bigint }>;
-  };
-  if (q.maxFee !== undefined) return q.maxFee;
-  if (q.fee !== undefined) return q.fee;
-  let total = 0n;
-  for (const line of q.lines ?? []) {
-    total += line.maxFee ?? line.fee ?? 0n;
-  }
-  return total;
-}
-
-async function isBuyerSessionLive(
-  walletAddress: `0x${string}`,
-  session: Session,
-): Promise<boolean> {
-  if (session.expiry <= Math.floor(Date.now() / 1000)) return false;
-  try {
-    return await publicClient().readContract({
-      address: CELO.keyStore,
-      abi: KEYSTORE_ABI,
-      functionName: "isValidKey",
-      args: [walletAddress, keccak256(session.publicKey as Hex)],
-    });
-  } catch {
-    return false;
-  }
-}
-
-async function regrantBuyerSession(opts: MainnetRunOptions, note: string): Promise<void> {
-  const client = buyerClient();
-  const altanaSigner = signerFromPrivateKey(opts.altanaPk);
-  const wallet = { address: MAINNET_ALTANA_ADMIN_ADDRESS };
-  const sessionPk = (process.env.VETGATE_SESSION_PK ?? generatePrivateKey()) as `0x${string}`;
-  const sessionSigner = signerFromPrivateKey(sessionPk);
-  const expiry = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
-  const permissions = sessionPermissions(opts.payGuard);
-
-  const quote = await attributedQuoteGrantSession(client, {
-    wallet,
-    signer: altanaSigner,
-    sessionSigner,
-    chainId: CELO_MAINNET_CHAIN_ID,
-    feeToken: CELO_MAINNET_USDC,
-    permissions,
-    expiry,
-  });
-  const feeWei = grantQuoteNativeFee(quote);
-  if (feeWei > ONE_CELO_WEI) {
-    throw new Error(
-      `refused: grantSession relay quote ${feeWei.toString()} wei (max ${ONE_CELO_WEI.toString()} = 1 CELO)`,
-    );
-  }
-  printDryCall("regrant_session_quote", {
-    note,
-    feeWei: feeWei.toString(),
-    wallet: wallet.address,
-    expiry,
-  });
-
-  if (opts.dry) return;
-
-  const grant = await attributedGrantSession(client, {
-    wallet,
-    signer: altanaSigner,
-    sessionSigner,
-    chainId: CELO_MAINNET_CHAIN_ID,
-    feeToken: CELO_MAINNET_USDC,
-    permissions,
-    expiry,
-  });
-  persistSessionKey(sessionPk, grant, wallet.address);
-  if (grant.transactionHash) {
-    appendTxRow(
-      "altana_wallet_and_session",
-      grant.transactionHash,
-      `regrantSession after ${note} (+ ERC-8021 relay suffix)`,
-    );
-  }
-}
-
-async function resolveLiveBuyerSession(
-  opts: MainnetRunOptions,
-  reason: string,
-): Promise<{ client: Client; session: Session; walletAddress: `0x${string}` }> {
-  let disk: ReturnType<typeof loadBuyerSessionFromDisk> | undefined;
-  try {
-    disk = loadBuyerSessionFromDisk();
-  } catch {
-    disk = undefined;
-  }
-
-  const client = buyerClient();
-  if (disk && (await isBuyerSessionLive(disk.walletAddress, disk.session))) {
-    return { client, session: disk.session, walletAddress: disk.walletAddress };
-  }
-
-  await regrantBuyerSession(opts, reason);
-  if (opts.dry) {
-    if (disk) {
-      return { client, session: disk.session, walletAddress: disk.walletAddress };
-    }
-    throw new Error(`${reason}: no session on disk; run step 3 or live regrant first`);
-  }
-
-  const fresh = loadBuyerSessionFromDisk();
-  return { client, session: fresh.session, walletAddress: fresh.walletAddress };
-}
-
 export async function runMainnetStep(
   stepId: MainnetRunStepId,
   opts: MainnetRunOptions,
@@ -615,11 +524,113 @@ export async function runMainnetStep(
     return;
   }
 
-  const buyerLoaded =
-    stepId === "daily_small_use" && opts.daily
-      ? await resolveLiveBuyerSession(opts, "daily_small_use")
-      : { ...loadBuyerSession() };
-  const { client, session, walletAddress } = buyerLoaded;
+  if (stepId === "daily_small_use") {
+    if (!opts.daily) {
+      console.log("Pass --daily to run one idempotent ALLOW payment for the current UTC day.");
+      return;
+    }
+    const day = utcDayStamp();
+    if (isDailyPaymentDoneUtc(day)) {
+      console.log(`daily_small_use: skip — already recorded for UTC ${day}`);
+      return;
+    }
+    if (oracleAccount.address.toLowerCase() !== MAINNET_ADMIN_ADDRESS.toLowerCase()) {
+      throw new Error(
+        `daily_small_use: operator EOA must be ${MAINNET_ADMIN_ADDRESS} (got ${oracleAccount.address})`,
+      );
+    }
+    assertMainnetDemoAmount(MAINNET_DEMO_PAYMENT_UNITS);
+    const seller = await resolveMainnetSellerPayTo();
+    if (seller.source !== "vet402") {
+      console.log(`daily_small_use: skipped: not ALLOW utc=${day}`);
+      if (!opts.dry) {
+        appendTxRow(stepId, "0xskipped", `skipped: not ALLOW utc=${day}`);
+      }
+      return;
+    }
+    assertSellerNotAdmin(seller.payTo);
+    upsertRunMetadata("demo_seller_payto", seller.payTo);
+    upsertRunMetadata("demo_seller_source", seller.source);
+
+    const minted = await mintVetGatePermit({
+      buyer: oracleAccount.address,
+      payTo: seller.payTo,
+      maxAmount: MAINNET_DEMO_PAYMENT_UNITS,
+      payGuardAddress: opts.payGuard,
+      oracleAccount,
+      token: CELO_MAINNET_USDC,
+    });
+    const permit: OraclePermitFields = {
+      payTo: minted.payTo,
+      token: minted.token,
+      maxAmount: minted.maxAmount,
+      expiresAt: minted.expiresAt,
+      nonce: minted.nonce,
+      verdictCode: minted.verdictCode,
+      signature: minted.signature,
+    };
+    const taggedPay = buildTaggedPayWithPermitCalldata({
+      permit,
+      amountUnits: MAINNET_DEMO_PAYMENT_UNITS,
+    });
+    const operator = oracleAccount.address;
+    const allowance = await readUsdcAllowance(operator, opts.payGuard);
+    const needsApprove = allowance < MAINNET_DEMO_PAYMENT_UNITS;
+    const approveTagged = needsApprove
+      ? buildUsdcApproveForGuardCalldata(opts.payGuard, MAINNET_DAILY_USDC_APPROVE_CAP)
+      : undefined;
+
+    if (opts.dry) {
+      printDryCall("daily_small_use", {
+        utcDay: day,
+        mode: "operator_eoa_direct",
+        from: operator,
+        sellerUrl: seller.sellerUrl,
+        payTo: seller.payTo,
+        amount: MAINNET_DEMO_PAYMENT_UNITS.toString(),
+        usdcAllowance: allowance.toString(),
+        approveCap: MAINNET_DAILY_USDC_APPROVE_CAP.toString(),
+        payGuard: opts.payGuard,
+        oraclePermit: "minted locally after vet402 ALLOW",
+      });
+      if (approveTagged) {
+        await printDryEoaTx("daily_usdc_approve", operator, CELO_MAINNET_USDC, approveTagged);
+      }
+      await printDryEoaTx("daily_pay_with_permit", operator, opts.payGuard, taggedPay, {
+        gasFallback: needsApprove ? REFERENCE_PAY_WITH_PERMIT_GAS : undefined,
+      });
+      return;
+    }
+
+    const walletClient = createWalletClient({
+      account: oracleAccount,
+      chain: celo,
+      transport: http(runtime.rpc),
+    });
+    if (approveTagged) {
+      const approveHash = await walletClient.sendTransaction({
+        to: CELO_MAINNET_USDC,
+        data: approveTagged,
+      });
+      appendTxRow(
+        "usdc_approve_pay_guard",
+        approveHash,
+        `operator USDC approve PayGuard cap ${MAINNET_DAILY_USDC_APPROVE_CAP} units (daily)`,
+      );
+    }
+    const payHash = await walletClient.sendTransaction({
+      to: opts.payGuard,
+      data: taggedPay,
+    });
+    appendTxRow(
+      stepId,
+      payHash,
+      `daily operator ALLOW payWithPermit ${seller.source} utc=${day} → ${seller.payTo}`,
+    );
+    return;
+  }
+
+  const { client, session, walletAddress } = loadBuyerSession();
 
   if (stepId === "demo_allow_payment") {
     if (guardOnce) assertStepNotDone(stepId);
@@ -864,55 +875,6 @@ export async function runMainnetStep(
     } catch (err) {
       console.log(`post_revoke simulate refused: ${err instanceof Error ? err.message : err}`);
     }
-    return;
-  }
-
-  if (stepId === "daily_small_use") {
-    if (!opts.daily) {
-      console.log("Pass --daily to run one idempotent ALLOW payment for the current UTC day.");
-      return;
-    }
-    const day = utcDayStamp();
-    if (isDailyPaymentDoneUtc(day)) {
-      console.log(`daily_small_use: skip — already recorded for UTC ${day}`);
-      return;
-    }
-    assertMainnetDemoAmount(MAINNET_DEMO_PAYMENT_UNITS);
-    const seller = await resolveMainnetSellerPayTo();
-    assertSellerNotAdmin(seller.payTo);
-
-    if (opts.dry) {
-      printDryCall("daily_small_use", {
-        utcDay: day,
-        amount: MAINNET_DEMO_PAYMENT_UNITS.toString(),
-        sessionWallet: walletAddress,
-      });
-      return;
-    }
-
-    const selfAgent = new SelfAgent({
-      privateKey: opts.selfAgentPk,
-      network: "mainnet",
-      rpcUrl: runtime.rpc,
-    });
-    const oracle = await fetchOraclePermit(
-      selfAgent,
-      opts.vetgateUrl,
-      seller.payTo,
-      walletAddress,
-      seller.sellerUrl,
-    );
-    if (oracle.verdict !== "ALLOW" || !oracle.permit) {
-      throw new Error("daily payment: oracle did not ALLOW");
-    }
-    const exec = await executeSessionPayWithPermit({
-      client,
-      session,
-      payGuard: opts.payGuard,
-      permit: oracle.permit,
-      amountUnits: MAINNET_DEMO_PAYMENT_UNITS,
-    });
-    appendTxRow(stepId, exec.transactionHash, `daily ALLOW utc=${day}`);
     return;
   }
 

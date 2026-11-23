@@ -11,7 +11,7 @@ VETGATE_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93
   npx tsx scripts/mainnet-run.ts --step 5 --dry
 # Live broadcast (owner approval required)
 npx tsx scripts/mainnet-run.ts --i-understand-mainnet --step 5
-# Daily micro-payment (UTC daily, idempotent)
+# Daily operator payWithPermit (UTC day, vet402 ALLOW, no Altana re-grant)
 npx tsx scripts/daily.ts --dry
 npx tsx scripts/daily.ts --i-understand-mainnet
 ```
