@@ -43,9 +43,18 @@ export type X402V1PaymentRequired = {
   accepts: X402V1Accept[];
 };
 
+export type BuyOnceHttpRequest = {
+  method: "GET" | "POST";
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+};
+
 export type SelectedX402Quote = {
   sellerUrl: string;
+  /** Paid / quote HTTP target (POST body URL or probed GET URL). */
   requestUrl: string;
+  httpRequest: BuyOnceHttpRequest;
   accept: X402V1Accept;
   paymentRequired: X402V1PaymentRequired;
 };
@@ -137,7 +146,7 @@ export function createBuyOnceX402Client(account: PrivateKeyAccount): x402Client 
 }
 
 export async function buildBuyOnceV2PaymentPayload(params: {
-  requestUrl: string;
+  httpRequest: BuyOnceHttpRequest;
   payerPrivateKey: `0x${string}`;
   fetchImpl?: typeof fetch;
 }): Promise<PaymentPayload> {
@@ -146,7 +155,10 @@ export async function buildBuyOnceV2PaymentPayload(params: {
   const coreClient = createBuyOnceX402Client(account);
   const httpClient = new x402HTTPClient(coreClient);
 
-  const response = await fetchImpl(params.requestUrl, { method: "GET" });
+  const response = await fetchImpl(
+    params.httpRequest.url,
+    mergeBuyOnceFetchInit(params.httpRequest),
+  );
   if (response.status !== 402) {
     throw new Error(`expected HTTP 402 before payment payload build, got ${response.status}`);
   }
@@ -206,6 +218,85 @@ export function probeUrlForSeller(baseUrl: string): string {
   return url.toString();
 }
 
+/**
+ * usebuy social profile APIs require POST + JSON body for paid replay;
+ * GET with query only works for the unpaid 402 quote in some gateways.
+ */
+export function buildBuyOnceHttpRequest(sellerUrl: string): BuyOnceHttpRequest {
+  const parsed = new URL(sellerUrl);
+  if (parsed.hostname === "gateway.usebuy.ai") {
+    if (
+      parsed.pathname.includes("/tiktok/profile") ||
+      parsed.pathname.includes("/instagram/profile")
+    ) {
+      const username = parsed.searchParams.get("username") ?? "cursor";
+      return {
+        method: "POST",
+        url: `${parsed.origin}${parsed.pathname}`,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username }),
+      };
+    }
+  }
+  return { method: "GET", url: probeUrlForSeller(sellerUrl) };
+}
+
+function mergeBuyOnceFetchInit(
+  req: BuyOnceHttpRequest,
+  extraHeaders?: Record<string, string>,
+): RequestInit {
+  return {
+    method: req.method,
+    headers: { ...req.headers, ...extraHeaders },
+    body: req.method === "POST" ? req.body : undefined,
+    redirect: "follow",
+  };
+}
+
+/** Safe stderr diagnostics when settlement headers are missing (no secrets). */
+export function logBuyOncePaidDiagnostics(params: {
+  httpRequest: BuyOnceHttpRequest;
+  sentPaymentHeaderNames: string[];
+  paymentPayload: PaymentPayload;
+  response: Response;
+  bodyPreview: string;
+}): void {
+  const paymentHeaders: Record<string, string> = {};
+  params.response.headers.forEach((value, name) => {
+    if (/payment/i.test(name)) {
+      paymentHeaders[name] = `${value.length} b64 chars`;
+    }
+  });
+  const accepted = params.paymentPayload.accepted;
+  console.error(
+    JSON.stringify(
+      {
+        buyOncePaidDiagnostics: {
+          request: {
+            method: params.httpRequest.method,
+            url: params.httpRequest.url,
+            hasBody: Boolean(params.httpRequest.body),
+          },
+          sentPaymentHeaderNames: params.sentPaymentHeaderNames,
+          payloadAccepted: accepted
+            ? {
+                network: accepted.network,
+                amount: accepted.amount,
+                asset: accepted.asset,
+                payTo: accepted.payTo,
+              }
+            : null,
+          paidHttpStatus: params.response.status,
+          responsePaymentHeaders: paymentHeaders,
+          bodyFirst300: params.bodyPreview.slice(0, 300),
+        },
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 export function buildEip3009SignPreview(params: {
   accept: X402V1Accept;
   payer: `0x${string}`;
@@ -240,16 +331,18 @@ export function buildEip3009SignPreview(params: {
 }
 
 export async function fetchPaymentRequired(
-  requestUrl: string,
+  httpRequest: BuyOnceHttpRequest,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ status: number; paymentRequired: X402V1PaymentRequired }> {
-  const resp = await fetchImpl(requestUrl, { method: "GET", redirect: "follow" });
+  const resp = await fetchImpl(httpRequest.url, mergeBuyOnceFetchInit(httpRequest));
   const text = await resp.text();
   let body: X402V1PaymentRequired;
   try {
     body = JSON.parse(text) as X402V1PaymentRequired;
   } catch {
-    throw new Error(`expected JSON 402 body from ${requestUrl}, got status ${resp.status}`);
+    throw new Error(
+      `expected JSON 402 body from ${httpRequest.method} ${httpRequest.url}, got status ${resp.status}`,
+    );
   }
   if (!Array.isArray(body.accepts)) {
     throw new Error(`missing accepts[] in 402 body (status ${resp.status})`);
@@ -261,13 +354,19 @@ export async function quoteCheapestSeller(
   seller: ResolvedMainnetSeller,
   fetchImpl: typeof fetch = fetch,
 ): Promise<SelectedX402Quote> {
-  const requestUrl = probeUrlForSeller(seller.sellerUrl);
-  const { status, paymentRequired } = await fetchPaymentRequired(requestUrl, fetchImpl);
+  const httpRequest = buildBuyOnceHttpRequest(seller.sellerUrl);
+  const { status, paymentRequired } = await fetchPaymentRequired(httpRequest, fetchImpl);
   if (status !== 402) {
     throw new Error(`expected HTTP 402 from seller, got ${status}`);
   }
   const accept = selectCeloMainnetAccept(paymentRequired, CELO_MAINNET_USDC);
-  return { sellerUrl: seller.sellerUrl, requestUrl, accept, paymentRequired };
+  return {
+    sellerUrl: seller.sellerUrl,
+    requestUrl: httpRequest.url,
+    httpRequest,
+    accept,
+    paymentRequired,
+  };
 }
 
 export async function discoverCheapestUsefulQuote(
@@ -320,7 +419,7 @@ export async function runBuyOnceDry(params: {
   const quote = await discoverCheapestUsefulQuote(fetchImpl);
   const eip3009 = buildEip3009SignPreview({ accept: quote.accept, payer: params.payer });
   const paymentPayloadV2 = await buildBuyOnceV2PaymentPayload({
-    requestUrl: quote.requestUrl,
+    httpRequest: quote.httpRequest,
     payerPrivateKey: params.payerPrivateKey,
     fetchImpl,
   });
@@ -339,7 +438,8 @@ export async function runBuyOnceLive(params: {
   const coreClient = createBuyOnceX402Client(account);
   const httpClient = new x402HTTPClient(coreClient);
 
-  let response = await fetchImpl(quote.requestUrl, { method: "GET" });
+  const { httpRequest } = quote;
+  let response = await fetchImpl(httpRequest.url, mergeBuyOnceFetchInit(httpRequest));
   if (response.status !== 402) {
     throw new Error(`expected 402 before payment, got ${response.status}`);
   }
@@ -353,15 +453,27 @@ export async function runBuyOnceLive(params: {
   const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
   const payHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 
-  response = await fetchImpl(quote.requestUrl, {
-    method: "GET",
-    headers: payHeaders,
-  });
+  response = await fetchImpl(
+    httpRequest.url,
+    mergeBuyOnceFetchInit(httpRequest, payHeaders),
+  );
 
   const paidBody = await response.text();
   const responseHash = keccak256(stringToHex(paidBody));
 
-  const settle = httpClient.getPaymentSettleResponse((name) => response.headers.get(name));
+  let settle;
+  try {
+    settle = httpClient.getPaymentSettleResponse((name) => response.headers.get(name));
+  } catch (err) {
+    logBuyOncePaidDiagnostics({
+      httpRequest,
+      sentPaymentHeaderNames: Object.keys(payHeaders),
+      paymentPayload,
+      response,
+      bodyPreview: paidBody,
+    });
+    throw err;
+  }
   const txHash = (settle?.transaction ?? "0x0") as `0x${string}`;
   if (!txHash || txHash === "0x0") {
     throw new Error("payment completed but settlement transaction hash missing");

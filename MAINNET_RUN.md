@@ -42,3 +42,4 @@ Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 - erc8004_scan: https://8004scan.io/9907
 - demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile` (vet402 ALLOW → payTo on Celo)| usdc_approve_pay_guard | `0x63aaa101597cce77ea42739872538142d86207bff8a886b5c6dd0da2a3cb8a9d` | operator USDC approve PayGuard cap 50000 units (daily) | 2026-11-23T13:05:21.974Z |
 | daily_small_use | `0xd78bd93201bc0514e1551550f4d38b58842fc57e2fbcca30e109d47908b6e12b` | daily operator ALLOW payWithPermit vet402 utc=2026-11-23 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-23T13:05:26.944Z |
+| buy_purchase | `0x94c15cc3da1522d26df00e66129ddf2376210c25b2ee4989ae036f13b02264c2` | x402 usebuy bodySha256=0x9a00e598768d23cceb8686f6cc561c46520ec948589df3df49e40af428d05ae5 units=5000 | 2026-11-23T23:10:39.467Z |

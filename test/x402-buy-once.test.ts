@@ -4,6 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { CELO_MAINNET_CAIP2, CELO_MAINNET_USDC } from "../src/chain.js";
 import {
   assertBuyOncePriceCap,
+  buildBuyOnceHttpRequest,
   buildEip3009SignPreview,
   createBuyOnceX402Client,
   isCeloMainnetNetwork,
@@ -33,6 +34,15 @@ const SAMPLE_402 = {
 } as const;
 
 describe("x402 buy-once guards", () => {
+  it("uses POST JSON for usebuy social profile sellers", () => {
+    const req = buildBuyOnceHttpRequest(
+      "https://gateway.usebuy.ai/v1/social/tiktok/profile?username=cursor",
+    );
+    expect(req.method).toBe("POST");
+    expect(req.url).toBe("https://gateway.usebuy.ai/v1/social/tiktok/profile");
+    expect(req.body).toBe(JSON.stringify({ username: "cursor" }));
+  });
+
   it("recognizes Celo mainnet network aliases", () => {
     expect(isCeloMainnetNetwork("celo")).toBe(true);
     expect(isCeloMainnetNetwork("eip155:42220")).toBe(true);
