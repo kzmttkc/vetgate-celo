@@ -311,11 +311,14 @@ export async function runMainnetStep(
       chain: celo,
       transport: http(runtime.rpc),
     });
-    const fundHash = await walletClient.sendTransaction({
-      to: CELO_MAINNET_USDC,
-      data: transferData as Hex,
-    });
-    appendTxRow(stepId, fundHash, `admin USDC fund ${fundUnits} units → buyer wallet`);
+    // Altana wallets are the admin EOA itself (EIP-7702), so there is nothing to fund when the addresses match.
+    if (wallet.address.toLowerCase() !== adminAccount.address.toLowerCase()) {
+      const fundHash = await walletClient.sendTransaction({
+        to: CELO_MAINNET_USDC,
+        data: transferData as Hex,
+      });
+      appendTxRow(`${stepId}_fund`, fundHash, `admin USDC fund ${fundUnits} units → buyer wallet`);
+    }
 
     const grant = await client.grantSession({
       wallet,

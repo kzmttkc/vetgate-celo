@@ -27,4 +27,4 @@ npx tsx scripts/mainnet-run.ts --i-understand-mainnet --step 2
 ## Run state
 
 - pay_guard: `0xde00a2f23792e3cadbf0088a1b93276748a5666c`
-- attribution: `celo_56284feb7672`
+- attribution: `celo_56284feb7672`| note_selftransfer_bug (not step 3) | `0x58f00319aa6be7d085cd03b4241fa8e0ed58bb2cd0a7b584e155ca90f2e87246` | admin USDC fund 200000 units → buyer wallet | 2026-11-23T10:43:57.365Z |
