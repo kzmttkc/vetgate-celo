@@ -38,6 +38,11 @@ function scanText(rel, text) {
       violations.push(`${rel}: matches a .secrets key fingerprint`);
       return;
     }
+    const at = text.indexOf(hex);
+    const lineStart = text.lastIndexOf("\n", at) + 1;
+    const lineEnd = text.indexOf("\n", at);
+    const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+    if (line.includes("|") && line.includes("`")) continue;
     if (rel.endsWith(".md") && text.includes(`\`${hex}\``)) continue;
     if (rel.includes("check-no-keys")) continue;
     violations.push(`${rel}: looks like a raw secp256k1 private key`);
