@@ -24,6 +24,17 @@ export const PLACEHOLDER_ATTRIBUTION_TAG = "celo_56284feb7672" as const;
 /** Funded admin for mainnet runbook (public address; key in `.secrets/mainnet-admin.key`). */
 export const MAINNET_ADMIN_ADDRESS = "0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435" as const;
 
+/**
+ * Team-controlled payTo when vet402 has no ALLOW Celo x402 seller (see `VETGATE_TEAM_WALLETS`).
+ * Must not equal {@link MAINNET_ADMIN_ADDRESS}.
+ */
+export const MAINNET_CONTROLLED_SELLER_PAYTO =
+  "0x1111111111111111111111111111111111111111" as const;
+
+/** vet402 check URL paired with {@link MAINNET_CONTROLLED_SELLER_PAYTO} (documented fallback). */
+export const MAINNET_CONTROLLED_SELLER_URL =
+  "https://vetgate-celo.local/controlled-seller-fallback" as const;
+
 export type VetgateCeloNetwork = "testnet" | "mainnet";
 
 export type CeloRuntime = {

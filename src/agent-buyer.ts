@@ -2,12 +2,20 @@
  * Altana buyer on Celo (testnet or mainnet via VETGATE_CELO_NETWORK).
  * Set VETGATE_ALTANA_MOCK=1 for ALLOW/BLOCK/revoke without relay RPC (unit tests / CI).
  */
-import { createClient, CELO, CELO_SEPOLIA, signerFromPrivateKey } from "@altananetwork/sdk";
+import {
+  createClient,
+  CELO,
+  CELO_SEPOLIA,
+  signerFromPrivateKey,
+  type Client,
+  type Session,
+} from "@altananetwork/sdk";
 import { SelfAgent } from "@selfxyz/agent-sdk";
 import { appendAttributionSuffix, attributionSuffix } from "./attribution.js";
 import { encodeFunctionData, keccak256, parseAbi } from "viem";
 
 import { resolveAttributionCode, resolveCeloRuntime } from "./chain.js";
+import { PAY_WITH_PERMIT_CALL_SIG } from "./mainnet-runbook.js";
 
 const PAY_GUARD_ABI = parseAbi([
   "function payWithPermit(address payTo, address token, uint256 amount, uint256 maxAmount, uint256 expiresAt, bytes32 nonce, uint8 verdict, bytes signature, bytes attributionTag) external",
@@ -54,6 +62,47 @@ function useAltanaMock(): boolean {
   return process.env.VETGATE_ALTANA_MOCK === "1";
 }
 
+export type OraclePermitFields = NonNullable<OraclePermitResponse["permit"]>;
+
+export async function executeSessionPayWithPermit(params: {
+  client: Client;
+  session: Session;
+  payGuard: `0x${string}`;
+  permit: OraclePermitFields;
+  amountUnits: bigint;
+  chainId?: number;
+  attributionCode?: string;
+}): Promise<{ transactionHash: `0x${string}`; attributionSuffix: `0x${string}` }> {
+  const attributionCode = params.attributionCode ?? resolveAttributionCode();
+  const innerCalldata = encodeFunctionData({
+    abi: PAY_GUARD_ABI,
+    functionName: "payWithPermit",
+    args: [
+      params.permit.payTo,
+      params.permit.token,
+      params.amountUnits,
+      BigInt(params.permit.maxAmount),
+      BigInt(params.permit.expiresAt),
+      params.permit.nonce,
+      params.permit.verdictCode,
+      params.permit.signature,
+      attributionCode,
+    ],
+  });
+  const taggedData = appendAttributionSuffix(innerCalldata, attributionCode);
+  const runtime = resolveCeloRuntime();
+  const execRes = await params.client.execute({
+    session: params.session,
+    calls: [{ to: params.payGuard, data: taggedData }],
+    chainId: params.chainId ?? runtime.chainId,
+    feeToken: runtime.usdc,
+  });
+  const transactionHash =
+    (execRes as { transactionHash?: `0x${string}` }).transactionHash ??
+    (`0x${"00".repeat(32)}` as `0x${string}`);
+  return { transactionHash, attributionSuffix: attributionSuffix(attributionCode) };
+}
+
 export async function fetchOraclePermit(
   selfAgent: SelfAgent,
   vetgateUrl: string,
@@ -74,7 +123,6 @@ export async function runGuardedProcurement(
   params: GuardedProcurementParams,
 ): Promise<GuardedProcurementResult> {
   const attributionCode = params.attributionCode ?? resolveAttributionCode();
-  const suffix = attributionSuffix(attributionCode);
 
   if (useAltanaMock()) {
     const oracle = params.mockOracle ?? {
@@ -91,7 +139,11 @@ export async function runGuardedProcurement(
     }
     const execTxHash =
       params.mockExecuteTxHash ?? (`0x${"ab".repeat(32)}` as `0x${string}`);
-    return { status: "paid_under_guard", execTxHash, attributionSuffix: suffix };
+    return {
+      status: "paid_under_guard",
+      execTxHash,
+      attributionSuffix: attributionSuffix(attributionCode),
+    };
   }
 
   const runtime = resolveCeloRuntime();
@@ -108,7 +160,7 @@ export async function runGuardedProcurement(
     chainId: altanaChain.chainId,
     feeToken: runtime.usdc,
     permissions: {
-      calls: [{ to: params.payGuardAddress }],
+      calls: [{ to: params.payGuardAddress, signature: PAY_WITH_PERMIT_CALL_SIG }],
       spend: [{ limit: 1_000_000n, period: "day", token: runtime.usdc }],
     },
     expiry: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
@@ -152,32 +204,16 @@ export async function runGuardedProcurement(
     };
   }
 
-  const innerCalldata = encodeFunctionData({
-    abi: PAY_GUARD_ABI,
-    functionName: "payWithPermit",
-    args: [
-      oracle.permit.payTo,
-      oracle.permit.token,
-      params.amountUnits,
-      BigInt(oracle.permit.maxAmount),
-      BigInt(oracle.permit.expiresAt),
-      oracle.permit.nonce,
-      oracle.permit.verdictCode,
-      oracle.permit.signature,
+  const { transactionHash: execTxHash, attributionSuffix: paidSuffix } =
+    await executeSessionPayWithPermit({
+      client,
+      session,
+      payGuard: params.payGuardAddress,
+      permit: oracle.permit,
+      amountUnits: params.amountUnits,
+      chainId: altanaChain.chainId,
       attributionCode,
-    ],
-  });
-  const taggedData = appendAttributionSuffix(innerCalldata, attributionCode);
+    });
 
-  const execRes = await client.execute({
-    wallet,
-    session,
-    calls: [{ to: params.payGuardAddress, data: taggedData }],
-  });
-
-  const execTxHash =
-    (execRes as { transactionHash?: `0x${string}` }).transactionHash ??
-    (`0x${"00".repeat(32)}` as `0x${string}`);
-
-  return { status: "paid_under_guard", execTxHash, attributionSuffix: suffix };
+  return { status: "paid_under_guard", execTxHash, attributionSuffix: paidSuffix };
 }

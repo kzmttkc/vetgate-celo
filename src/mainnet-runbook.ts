@@ -22,6 +22,10 @@ const PAY_GUARD_ABI = parseAbi([
 
 export const MAX_MAINNET_USDC_PER_TX = 1_000_000n;
 
+/** Scoped to VetGatePayGuard.payWithPermit only (Altana session calls permission). */
+export const PAY_WITH_PERMIT_CALL_SIG =
+  "payWithPermit(address,address,uint256,uint256,uint256,bytes32,uint8,bytes,bytes)";
+
 export const MAINNET_AGENT_URI =
   "https://vetgate-celo.local/agent-registration.json";
 
