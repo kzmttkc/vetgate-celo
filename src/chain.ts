@@ -12,4 +12,4 @@ export const VET402_API_BASE = "https://vet402.com" as const;
 export const DEFAULT_FACILITATOR_URL = "https://api.x402.sepolia.celo.org" as const;
 
 /** Placeholder until Loops enrollment issues the real ERC-8021 code. */
-export const PLACEHOLDER_ATTRIBUTION_TAG = "celo_enrollment_pending" as const;
+export const PLACEHOLDER_ATTRIBUTION_TAG = "celo_56284feb7672" as const;

@@ -7,7 +7,7 @@
 | ネットワーク | Celo Sepolia `11142220` |
 | Self Agent ID | _未登録 — オーナー登録待ち_ |
 | ERC-8004 agentId | _未登録_ |
-| ERC-8021 attribution | `celo_enrollment_pending`（[chain.ts:15](src/chain.ts#L15)） |
+| ERC-8021 attribution | `celo_56284feb7672`（[chain.ts:15](src/chain.ts#L15)） |
 | PayGuard デプロイ tx | _未実施_（[TESTNET_RUN.md](TESTNET_RUN.md)） |
 | x402 決済 tx | _未実施_（`X402_API_KEY` 要） |
 | Altana session / execute tx | _未実施_（faucet/Captcha 停止） |
