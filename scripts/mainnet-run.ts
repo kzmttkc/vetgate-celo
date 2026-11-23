@@ -65,6 +65,9 @@ function loadSelfAgentKey(oraclePk: `0x${string}`): `0x${string}` {
 }
 
 async function main(): Promise<void> {
+  if (!process.env.VETGATE_CELO_NETWORK && !process.env.VETGATE_NETWORK) {
+    process.env.VETGATE_CELO_NETWORK = "mainnet";
+  }
   syncNetworkEnvFromAlias();
   const args = parseArgs(process.argv.slice(2));
 
@@ -95,7 +98,7 @@ async function main(): Promise<void> {
   const vetgateUrl = process.env.VETGATE_URL ?? "http://localhost:3001";
   const selfAgentPk = loadSelfAgentKey(oraclePk);
 
-  process.env.VETGATE_CELO_NETWORK = process.env.VETGATE_CELO_NETWORK ?? "mainnet";
+  syncNetworkEnvFromAlias();
   process.env.VETGATE_ALTANA_MOCK = "0";
 
   await runMainnetStep(selected.id as MainnetRunStepId, {

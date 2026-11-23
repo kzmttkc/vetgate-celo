@@ -1,5 +1,5 @@
 import { fromDataSuffix, toDataSuffix } from "@celo/attribution-tags";
-import { concat, type Hex } from "viem";
+import { concat, stringToHex, type Hex } from "viem";
 
 import { PLACEHOLDER_ATTRIBUTION_TAG, resolveAttributionCode } from "./chain.js";
 
@@ -8,6 +8,11 @@ export type AttributionTag = `0x${string}`;
 /** ERC-8021 calldata suffix for the configured hackathon tag. */
 export function attributionSuffix(code?: string): AttributionTag {
   return toDataSuffix(code ?? resolveAttributionCode());
+}
+
+/** UTF-8 attribution code as ABI `bytes` (viem rejects bare strings — they are not hex). */
+export function attributionTagBytes(code?: string): Hex {
+  return stringToHex(code ?? resolveAttributionCode());
 }
 
 /** Append the attribution suffix to contract call data (Altana execute, plain EOA calls). */

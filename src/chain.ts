@@ -55,9 +55,18 @@ export type CeloRuntime = {
 };
 
 export function getVetgateCeloNetwork(): VetgateCeloNetwork {
-  const raw = (process.env.VETGATE_CELO_NETWORK ?? "testnet").toLowerCase();
+  const raw = (
+    process.env.VETGATE_CELO_NETWORK ??
+    process.env.VETGATE_NETWORK ??
+    "testnet"
+  ).toLowerCase();
   if (raw === "mainnet" || raw === "42220" || raw === "celo") return "mainnet";
   return "testnet";
+}
+
+/** Back-compat: mirror unified network into VETGATE_CELO_NETWORK for child processes. */
+export function syncVetgateCeloNetworkEnv(): void {
+  process.env.VETGATE_CELO_NETWORK = getVetgateCeloNetwork();
 }
 
 export function resolveCeloRuntime(): CeloRuntime {

@@ -26,7 +26,12 @@ import { celo } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { appendAttributionSuffix } from "./attribution.js";
-import { executeSessionPayWithPermit, fetchOraclePermit } from "./agent-buyer.js";
+import {
+  buildTaggedPayWithPermitCalldata,
+  executeSessionPayWithPermit,
+  fetchOraclePermit,
+} from "./agent-buyer.js";
+import { isAltanaError } from "@altananetwork/sdk";
 import {
   CELO_MAINNET_CHAIN_ID,
   CELO_MAINNET_USDC,
@@ -37,6 +42,8 @@ import {
   resolveCeloRuntime,
 } from "./chain.js";
 import { printRelayQuote } from "./mainnet-quote.js";
+import { mintVetGatePermit } from "./permit.js";
+import type { OraclePermitFields } from "./agent-buyer.js";
 import {
   appendTxRow,
   assertStepNotDone,
@@ -65,7 +72,10 @@ import {
 
 const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
 ]);
+
 const ERC8004_ABI = parseAbi([
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function balanceOf(address owner) view returns (uint256)",
@@ -98,12 +108,7 @@ export function assertMainnetChain(allowTestnet: boolean): void {
   }
 }
 
-export function syncNetworkEnvFromAlias(): void {
-  const alias = process.env.VETGATE_NETWORK?.toLowerCase();
-  if (alias === "mainnet" || alias === "42220") {
-    process.env.VETGATE_CELO_NETWORK = "mainnet";
-  }
-}
+export { syncVetgateCeloNetworkEnv as syncNetworkEnvFromAlias } from "./chain.js";
 
 function publicClient() {
   const runtime = resolveCeloRuntime();
@@ -152,6 +157,121 @@ function sessionPermissions(payGuard: `0x${string}`) {
     calls: [{ to: payGuard, signature: PAY_WITH_PERMIT_CALL_SIG }],
     spend: [{ limit: 1_000_000n, period: "day" as const, token: CELO_MAINNET_USDC }],
   };
+}
+
+function buildUsdcApproveForGuardCalldata(
+  payGuard: `0x${string}`,
+  amount: bigint,
+): Hex {
+  return appendAttributionSuffix(
+    encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [payGuard, amount],
+    }),
+  );
+}
+
+async function readUsdcAllowance(
+  owner: `0x${string}`,
+  spender: `0x${string}`,
+): Promise<bigint> {
+  return await publicClient().readContract({
+    address: CELO_MAINNET_USDC,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [owner, spender],
+  });
+}
+
+async function ensurePayGuardUsdcAllowance(params: {
+  client: Client;
+  altanaPk: `0x${string}`;
+  payGuard: `0x${string}`;
+  walletAddress: `0x${string}`;
+  amount: bigint;
+  dry: boolean;
+}): Promise<void> {
+  const allowance = await readUsdcAllowance(params.walletAddress, params.payGuard);
+  if (allowance >= params.amount) return;
+
+  const altanaSigner = signerFromPrivateKey(params.altanaPk);
+  const wallet = { address: params.walletAddress };
+  const approveTagged = buildUsdcApproveForGuardCalldata(params.payGuard, params.amount);
+  printDryCall("usdc_approve_pay_guard", {
+    owner: params.walletAddress,
+    spender: params.payGuard,
+    amount: params.amount.toString(),
+    priorAllowance: allowance.toString(),
+    data: approveTagged,
+  });
+  if (params.dry) return;
+  const approved = await params.client.execute({
+    wallet,
+    signer: altanaSigner,
+    calls: [{ to: CELO_MAINNET_USDC, data: approveTagged }],
+    chainId: CELO_MAINNET_CHAIN_ID,
+    feeToken: CELO_MAINNET_USDC,
+  });
+  if (approved.transactionHash) {
+    appendTxRow("usdc_approve_pay_guard", approved.transactionHash, `USDC approve PayGuard ${params.amount} units`);
+  }
+}
+
+async function resolveOraclePermitForPayment(opts: {
+  dry: boolean;
+  selfAgentPk: `0x${string}`;
+  vetgateUrl: string;
+  payGuard: `0x${string}`;
+  oraclePk: `0x${string}`;
+  seller: Awaited<ReturnType<typeof resolveMainnetSellerPayTo>>;
+  walletAddress: `0x${string}`;
+  runtime: ReturnType<typeof resolveCeloRuntime>;
+}): Promise<OraclePermitFields> {
+  const selfAgent = new SelfAgent({
+    privateKey: opts.selfAgentPk,
+    network: "mainnet",
+    rpcUrl: opts.runtime.rpc,
+  });
+  const oracle = await fetchOraclePermit(
+    selfAgent,
+    opts.vetgateUrl,
+    opts.seller.payTo,
+    opts.walletAddress,
+    opts.seller.sellerUrl,
+  );
+  if (oracle.verdict === "ALLOW" && oracle.permit) {
+    return oracle.permit;
+  }
+  if (opts.dry && opts.seller.source === "vet402") {
+    printDryCall("oracle_permit", {
+      note: "HTTP permit unavailable (quota/402); minting dry quote permit locally after vet402 ALLOW",
+    });
+    const oracleAccount = privateKeyToAccount(opts.oraclePk);
+    return await mintVetGatePermit({
+      buyer: opts.walletAddress,
+      payTo: opts.seller.payTo,
+      maxAmount: 1_000_000n,
+      payGuardAddress: opts.payGuard,
+      oracleAccount,
+      token: CELO_MAINNET_USDC,
+    });
+  }
+  throw new Error(`oracle refused ALLOW for seller (${opts.seller.source})`);
+}
+
+function logAltanaQuoteFailure(label: string, err: unknown): void {
+  if (isAltanaError(err)) {
+    const parts = [
+      err.message,
+      err.code ? `code=${err.code}` : "",
+      err.detail ? `detail=${err.detail}` : "",
+      err.relayMessage ? `relay=${err.relayMessage}` : "",
+    ].filter(Boolean);
+    printDryCall(label, { error: parts.join(" | ") });
+    return;
+  }
+  printDryCall(label, { error: err instanceof Error ? err.message : String(err) });
 }
 
 function persistSessionKey(
@@ -366,53 +486,88 @@ export async function runMainnetStep(
     }
 
     if (opts.dry) {
-      const tagged = buildPayWithPermitCalldata({
+      const permit = await resolveOraclePermitForPayment({
+        dry: true,
+        selfAgentPk: opts.selfAgentPk,
+        vetgateUrl: opts.vetgateUrl,
         payGuard: opts.payGuard,
-        payTo: seller.payTo,
-        token: CELO_MAINNET_USDC,
-        amount: MAINNET_DEMO_PAYMENT_UNITS,
-        verdict: 1,
+        oraclePk: opts.oraclePk,
+        seller,
+        walletAddress,
+        runtime,
       });
+      const tagged = buildTaggedPayWithPermitCalldata({
+        permit,
+        amountUnits: MAINNET_DEMO_PAYMENT_UNITS,
+      });
+      const approveTagged = buildUsdcApproveForGuardCalldata(
+        opts.payGuard,
+        MAINNET_DEMO_PAYMENT_UNITS,
+      );
+      const allowance = await readUsdcAllowance(walletAddress, opts.payGuard);
       printDryCall("demo_allow_payment", {
         payTo: seller.payTo,
         sellerUrl: seller.sellerUrl,
         amount: MAINNET_DEMO_PAYMENT_UNITS.toString(),
+        usdcAllowance: allowance.toString(),
         data: tagged,
       });
+      const altanaSigner = signerFromPrivateKey(opts.altanaPk);
+      const wallet = { address: walletAddress };
       try {
-        const quote = await client.quoteExecute({
-          session,
-          calls: [{ to: opts.payGuard, data: tagged }],
-          chainId: CELO_MAINNET_CHAIN_ID,
-          feeToken: CELO_MAINNET_USDC,
-        });
-        printRelayQuote("quoteExecute", quote);
+        if (allowance < MAINNET_DEMO_PAYMENT_UNITS) {
+          printDryCall("quote_plan", {
+            note: "USDC allowance 0 → quote admin bundle approve+payWithPermit (live: approve tx then session payWithPermit)",
+          });
+          const quote = await client.quoteExecute({
+            wallet,
+            signer: altanaSigner,
+            calls: [
+              { to: CELO_MAINNET_USDC, data: approveTagged },
+              { to: opts.payGuard, data: tagged },
+            ],
+            chainId: CELO_MAINNET_CHAIN_ID,
+            feeToken: CELO_MAINNET_USDC,
+          });
+          printRelayQuote("quoteExecute", quote);
+        } else {
+          const quote = await client.quoteExecute({
+            session,
+            calls: [{ to: opts.payGuard, data: tagged }],
+            chainId: CELO_MAINNET_CHAIN_ID,
+            feeToken: CELO_MAINNET_USDC,
+          });
+          printRelayQuote("quoteExecute", quote);
+        }
       } catch (e) {
-        printDryCall("quoteExecute", { error: String(e) });
+        logAltanaQuoteFailure("quoteExecute", e);
       }
       return;
     }
 
-    const selfAgent = new SelfAgent({
-      privateKey: opts.selfAgentPk,
-      network: "mainnet",
-      rpcUrl: runtime.rpc,
-    });
-    const oracle = await fetchOraclePermit(
-      selfAgent,
-      opts.vetgateUrl,
-      seller.payTo,
+    const permit = await resolveOraclePermitForPayment({
+      dry: false,
+      selfAgentPk: opts.selfAgentPk,
+      vetgateUrl: opts.vetgateUrl,
+      payGuard: opts.payGuard,
+      oraclePk: opts.oraclePk,
+      seller,
       walletAddress,
-      seller.sellerUrl,
-    );
-    if (oracle.verdict !== "ALLOW" || !oracle.permit) {
-      throw new Error(`oracle refused ALLOW for seller (${seller.source})`);
-    }
+      runtime,
+    });
+    await ensurePayGuardUsdcAllowance({
+      client,
+      altanaPk: opts.altanaPk,
+      payGuard: opts.payGuard,
+      walletAddress,
+      amount: MAINNET_DEMO_PAYMENT_UNITS,
+      dry: false,
+    });
     const exec = await executeSessionPayWithPermit({
       client,
       session,
       payGuard: opts.payGuard,
-      permit: oracle.permit,
+      permit,
       amountUnits: MAINNET_DEMO_PAYMENT_UNITS,
     });
     appendTxRow(stepId, exec.transactionHash, `ALLOW payWithPermit ${seller.source} → ${seller.payTo}`);
@@ -444,7 +599,15 @@ export async function runMainnetStep(
         });
         printRelayQuote("quoteExecute", quote);
       } catch (e) {
-        printDryCall("quoteExecute", { error: String(e) });
+        const relayMsg = isAltanaError(e) ? (e.relayMessage ?? e.detail ?? "") : String(e);
+        if (relayMsg.includes("0x3e0a75f3") || relayMsg.includes("VerdictNotAllow")) {
+          printDryCall("quoteExecute", {
+            status: "expected_revert",
+            reason: "relay will not quote a reverting payWithPermit (VerdictNotAllow)",
+          });
+        } else {
+          logAltanaQuoteFailure("quoteExecute", e);
+        }
       }
       await publicClient()
         .call({

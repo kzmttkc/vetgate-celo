@@ -1,9 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Account } from "viem/accounts";
-import {
-  CELO_SEPOLIA_CHAIN_ID,
-  CELO_SEPOLIA_USDC,
-} from "./chain.js";
+import { resolveCeloRuntime } from "./chain.js";
 
 export const VERDICT_ALLOW = 1;
 
@@ -29,17 +26,18 @@ export type MintPermitParams = {
 };
 
 export async function mintVetGatePermit(params: MintPermitParams): Promise<VetGatePermitPayload> {
+  const runtime = resolveCeloRuntime();
   const expiresAt = BigInt(
     Math.floor(Date.now() / 1000) + (params.ttlSeconds ?? 300),
   );
   const nonce = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
-  const token = params.token ?? CELO_SEPOLIA_USDC;
+  const token = params.token ?? runtime.usdc;
 
   const signature = await params.oracleAccount.signTypedData({
     domain: {
       name: "VetGatePayGuard",
       version: "1",
-      chainId: CELO_SEPOLIA_CHAIN_ID,
+      chainId: runtime.chainId,
       verifyingContract: params.payGuardAddress,
     },
     types: {

@@ -15,8 +15,8 @@ const result = spawnSync(
     cwd: process.cwd(),
     env: {
       ...process.env,
-      VETGATE_CELO_NETWORK: process.env.VETGATE_CELO_NETWORK ?? "mainnet",
-      VETGATE_NETWORK: process.env.VETGATE_NETWORK ?? "mainnet",
+      VETGATE_CELO_NETWORK:
+        process.env.VETGATE_CELO_NETWORK ?? process.env.VETGATE_NETWORK ?? "mainnet",
     },
     stdio: "inherit",
   },

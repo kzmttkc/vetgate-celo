@@ -8,7 +8,7 @@ import {
   type Hex,
 } from "viem";
 
-import { appendAttributionSuffix } from "./attribution.js";
+import { appendAttributionSuffix, attributionTagBytes } from "./attribution.js";
 import {
   CELO_MAINNET_CHAIN_ID,
   MAINNET_ADMIN_ADDRESS,
@@ -102,7 +102,7 @@ export function buildPayWithPermitCalldata(params: {
       `0x${"aa".repeat(32)}`,
       params.verdict,
       "0x",
-      tag,
+      attributionTagBytes(tag),
     ],
   });
   return appendAttributionSuffix(inner);

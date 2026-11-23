@@ -10,13 +10,20 @@ export function printRelayQuote(label: string, quote: unknown): void {
     maxFee?: bigint;
     fee?: bigint;
     feeToken?: string;
+    feeTokenDeficit?: string | number | bigint;
     reason?: string;
     deferred?: boolean;
   };
 
+  const deficit = q.feeTokenDeficit;
+  const feeQuoted =
+    q.fee !== undefined &&
+    (deficit === undefined || deficit === "0" || deficit === 0 || deficit === 0n);
   const status =
-    q.status ??
-    (q.complete === false ? "incomplete" : q.complete === true ? "complete" : "quoted");
+    q.complete === true || feeQuoted
+      ? "complete"
+      : q.status ??
+        (q.complete === false ? "incomplete" : "quoted");
 
   const parts: string[] = [`status=${status}`];
 

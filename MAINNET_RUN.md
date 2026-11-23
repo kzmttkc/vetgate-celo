@@ -26,10 +26,13 @@ npx tsx scripts/daily.ts         # 送信（要 --i-understand-mainnet 経由）
 `scripts/mainnet-run.ts` が成功するたびにこの表へ行が追記されます。
 
 ## Run state
+- demo_seller_source: `vet402`
+- demo_seller_payto: `0x20faaca5f980e29639a0fcc6dca6988e18ed333b`
+- buyer_wallet: `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941`
 
 - pay_guard: `0xde00a2f23792e3cadbf0088a1b93276748a5666c`
 - attribution: `celo_56284feb7672`
 - oracle_signer: `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435`
 - altana_admin: `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941`
 - erc8004_agent: `9907`（step 2 skip）
-- demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile`（vet402 ALLOW → payTo on Celo）
+- demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile`（vet402 ALLOW → payTo on Celo）| altana_wallet_and_session | `0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549` | grantSession PayGuard.payWithPermit cap 1 USDC/day | 2026-11-23T11:36:50.645Z |

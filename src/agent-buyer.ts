@@ -11,8 +11,12 @@ import {
   type Session,
 } from "@altananetwork/sdk";
 import { SelfAgent } from "@selfxyz/agent-sdk";
-import { appendAttributionSuffix, attributionSuffix } from "./attribution.js";
-import { encodeFunctionData, keccak256, parseAbi } from "viem";
+import {
+  appendAttributionSuffix,
+  attributionSuffix,
+  attributionTagBytes,
+} from "./attribution.js";
+import { encodeFunctionData, keccak256, parseAbi, type Hex } from "viem";
 
 import { resolveAttributionCode, resolveCeloRuntime } from "./chain.js";
 import { PAY_WITH_PERMIT_CALL_SIG } from "./mainnet-runbook.js";
@@ -64,15 +68,12 @@ function useAltanaMock(): boolean {
 
 export type OraclePermitFields = NonNullable<OraclePermitResponse["permit"]>;
 
-export async function executeSessionPayWithPermit(params: {
-  client: Client;
-  session: Session;
-  payGuard: `0x${string}`;
+/** Inner + ERC-8021-suffixed PayGuard calldata from an oracle permit (relay-safe hex). */
+export function buildTaggedPayWithPermitCalldata(params: {
   permit: OraclePermitFields;
   amountUnits: bigint;
-  chainId?: number;
   attributionCode?: string;
-}): Promise<{ transactionHash: `0x${string}`; attributionSuffix: `0x${string}` }> {
+}): Hex {
   const attributionCode = params.attributionCode ?? resolveAttributionCode();
   const innerCalldata = encodeFunctionData({
     abi: PAY_GUARD_ABI,
@@ -86,11 +87,28 @@ export async function executeSessionPayWithPermit(params: {
       params.permit.nonce,
       params.permit.verdictCode,
       params.permit.signature,
-      attributionCode,
+      attributionTagBytes(attributionCode),
     ],
   });
-  const taggedData = appendAttributionSuffix(innerCalldata, attributionCode);
+  return appendAttributionSuffix(innerCalldata, attributionCode);
+}
+
+export async function executeSessionPayWithPermit(params: {
+  client: Client;
+  session: Session;
+  payGuard: `0x${string}`;
+  permit: OraclePermitFields;
+  amountUnits: bigint;
+  chainId?: number;
+  attributionCode?: string;
+}): Promise<{ transactionHash: `0x${string}`; attributionSuffix: `0x${string}` }> {
   const runtime = resolveCeloRuntime();
+  const attributionCode = params.attributionCode ?? resolveAttributionCode();
+  const taggedData = buildTaggedPayWithPermitCalldata({
+    permit: params.permit,
+    amountUnits: params.amountUnits,
+    attributionCode,
+  });
   const execRes = await params.client.execute({
     session: params.session,
     calls: [{ to: params.payGuard, data: taggedData }],
