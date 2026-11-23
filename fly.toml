@@ -1,3 +1,5 @@
+# Optional: Fly.io deploy template. Primary hosting target is Vercel (see README).
+
 app = "vetgate-celo"
 primary_region = "nrt"
 

@@ -61,7 +61,7 @@ async function buildPermitResponse(
         verdict: vet402.recommendation ?? "BLOCK",
         vet402,
         permit: null,
-        reason: "vet402 recommendation is not ALLOW; VetGate will not mint an onchain payment permit.",
+        reason: "vet402 recommendation is not ALLOW. VetGate will not mint an onchain payment permit.",
       },
     };
   }

@@ -44,6 +44,7 @@ function scanText(rel, text) {
     const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
     if (line.includes("|") && line.includes("`")) continue;
     if (rel.endsWith(".md") && text.includes(`\`${hex}\``)) continue;
+    if (rel.endsWith(".md") && line.includes("celoscan.io/tx/")) continue;
     if (rel.includes("check-no-keys")) continue;
     violations.push(`${rel}: looks like a raw secp256k1 private key`);
   }

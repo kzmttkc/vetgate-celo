@@ -1,42 +1,42 @@
-# Celo Sepolia 試験網での実行記録（2026-11-23）
+# Celo Sepolia run log (2026-11-23)
 
-対象チェーン：**11142220（Celo Sepolia）のみ**。mainnet への送金・RPC は意図的に行っていません。
+Target chain: **11142220 (Celo Sepolia) only**. No mainnet transfers or mainnet RPC in this log.
 
-## ローカルで通したもの（オフチェーン）
+## Local checks (off-chain)
 
-| 項目 | コマンド | 結果 |
+| Item | Command | Result |
 |---|---|---|
-| Solidity 単体 | `forge test --summary` | 9 passed / 0 failed |
-| TypeScript 単体 | `npm test` | 7 passed / 7 tests |
-| 秘密鍵生成 | `npm run gen-testnet-key` | `.secrets/testnet.key`（chmod 600、表示なし） |
+| Solidity unit tests | `forge test --summary` | 9 passed / 0 failed |
+| TypeScript unit tests | `npm test` | 7 passed / 7 tests |
+| Key generation | `npm run gen-testnet-key` | `.secrets/testnet.key` (chmod 600, no console output) |
 
-## オンチェーン（tx ハッシュ）
+## On-chain (tx hashes)
 
-| 操作 | ハッシュ | 状態 |
+| Action | Hash | Status |
 |---|---|---|
-| PayGuard デプロイ | — | **未実施**（下記「止まった理由」） |
-| Altana `grantSession` / `execute` / `revokeSession` | — | **未実施**（資金・Self 登録なし） |
-| x402 決済（`api.x402.sepolia.celo.org`） | — | **未実施**（`X402_API_KEY` 未設定） |
+| PayGuard deploy | — | **Not done** (see blockers below) |
+| Altana `grantSession` / `execute` / `revokeSession` | — | **Not done** (no funds, no Self registration) |
+| x402 payment (`api.x402.sepolia.celo.org`) | — | **Not done** (`X402_API_KEY` unset) |
 
-## 止まった理由（オーナー対応が必要）
+## Blockers (owner action)
 
-1. **CELO Sepolia ネイティブトークン**  
-   - 公式 https://faucet.celo.org/celo-sepolia は **reCAPTCHA v3** あり。スクリプト単体では不可。  
-   - 回避には **API キー（Bearer）** または **GitHub サインイン**（3 CELO/回）が必要（ページに明記）。  
-   - Circle USDC: https://faucet.circle.com（要確認・多くの場合ログイン/Captcha）。
+1. **CELO Sepolia native token**  
+   - https://faucet.celo.org/celo-sepolia uses **reCAPTCHA v3**. Scripts cannot pass it alone.  
+   - An **API key (Bearer)** or **GitHub sign-in** (3 CELO per request) is documented on that page.  
+   - Circle USDC: https://faucet.circle.com (often requires login or Captcha).
 
 2. **x402 Sepolia facilitator**  
-   - 有料枠超過後の settlement には https://x402.celo.org で **ウォレット署名による API キー発行**が必要（grok_docs 実測: testnet 無料 1000 credits）。
+   - Paid settlement after the free tier needs an API key from https://x402.celo.org via wallet signature (testnet free tier: 1000 credits in grok_docs notes).
 
-3. **Self Agent ID（Celo Sepolia / モック旅券）**  
-   - サーバー実機検証には登録済みエージェント鍵と `SelfAgent` 署名が必要（パスポート + Self アプリ QR、オーナー操作）。
+3. **Self Agent ID (Celo Sepolia / mock passport)**  
+   - Live server checks need a registered agent key and `SelfAgent` request signatures (passport + Self app QR, owner operation).
 
-4. **Altana ライブパス**  
-   - SDK は Celo Sepolia をサポート（`CELO_SEPOLIA`、relay `testnet-relay.altana.network`）。  
-   - 本リポでは CI 向けに `VETGATE_ALTANA_MOCK=1` を既定（`.env.example`）。ライブ試験には CELO/USDC 入金 + admin 鍵が必要。
+4. **Altana live path**  
+   - SDK supports Celo Sepolia (`CELO_SEPOLIA`, relay `testnet-relay.altana.network`).  
+   - This repo defaults to `VETGATE_ALTANA_MOCK=1` for CI (`.env.example`). Live trials need CELO or USDC funding plus an admin key.
 
-## 実施しなかったもの（仕様どおり）
+## Intentionally skipped
 
-- GitHub push / 公開ホストデプロイ
-- mainnet 送信（`scripts/mainnet-run.ts` — 計画は `mainnet-plan.ts` のみ実施済み）
-- `~/.vet402-keys`、実値 `.env`、`~/vouch` の参照
+- GitHub push or public host deploy
+- Mainnet broadcast (`scripts/mainnet-run.ts`, planning only via `mainnet-plan.ts`)
+- References to `~/.vet402-keys`, live `.env`, or `~/vouch`
