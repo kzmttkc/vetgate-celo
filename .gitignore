@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Secrets
+.secrets/
+.env
+.env.*
+!.env.example
+
+# Foundry
+cache/
+out/
+broadcast/
+
+# Build / coverage
+dist/
+coverage/
+
+# OS / editor
+.DS_Store
+*.log

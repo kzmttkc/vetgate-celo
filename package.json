@@ -1,0 +1,33 @@
+{
+  "name": "vetgate-celo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "start": "tsx src/server.ts",
+    "gen-testnet-key": "tsx scripts/gen-testnet-key.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@altananetwork/sdk": "^1.1.0",
+    "@celo/attribution-tags": "^0.5.0",
+    "@selfxyz/agent-sdk": "^0.3.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/supertest": "^7.2.1",
+    "@x402/core": "^2.32.0",
+    "@x402/evm": "^2.32.0",
+    "@x402/express": "^2.32.0",
+    "@x402/extensions": "^2.32.0",
+    "express": "^5.3.0",
+    "supertest": "^7.3.2",
+    "tsx": "^4.23.15",
+    "viem": "^2.58.4",
+    "vitest": "^5.1.1"
+  }
+}
