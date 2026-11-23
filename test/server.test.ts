@@ -34,6 +34,17 @@ describe("VetGate server", () => {
     vi.restoreAllMocks();
   });
 
+  it("exposes /health without auth", async () => {
+    const app = createApp({
+      payTo: oracleAddr,
+      payGuardAddress: payGuard,
+      oraclePrivateKey: ORACLE_PK,
+    });
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
   it("returns 401 JSON when Self auth fails", async () => {
     const app = createApp({
       payTo: oracleAddr,

@@ -12,6 +12,12 @@ import {
 } from "@altananetwork/sdk";
 import { SelfAgent } from "@selfxyz/agent-sdk";
 import {
+  attributedExecute,
+  attributedGrantSession,
+  attributedRevokeSession,
+  ensureRelayAttributionSuffix,
+} from "./attributed-altana-client.js";
+import {
   appendAttributionSuffix,
   attributionSuffix,
   attributionTagBytes,
@@ -102,6 +108,7 @@ export async function executeSessionPayWithPermit(params: {
   chainId?: number;
   attributionCode?: string;
 }): Promise<{ transactionHash: `0x${string}`; attributionSuffix: `0x${string}` }> {
+  await ensureRelayAttributionSuffix();
   const runtime = resolveCeloRuntime();
   const attributionCode = params.attributionCode ?? resolveAttributionCode();
   const taggedData = buildTaggedPayWithPermitCalldata({
@@ -109,7 +116,7 @@ export async function executeSessionPayWithPermit(params: {
     amountUnits: params.amountUnits,
     attributionCode,
   });
-  const execRes = await params.client.execute({
+  const execRes = await attributedExecute(params.client, {
     session: params.session,
     calls: [{ to: params.payGuard, data: taggedData }],
     chainId: params.chainId ?? runtime.chainId,
@@ -166,12 +173,13 @@ export async function runGuardedProcurement(
 
   const runtime = resolveCeloRuntime();
   const altanaChain = runtime.network === "mainnet" ? CELO : CELO_SEPOLIA;
+  await ensureRelayAttributionSuffix();
   const client = createClient({ chains: [altanaChain] });
   const admin = signerFromPrivateKey(params.adminPrivateKey);
   const sessionSigner = signerFromPrivateKey(params.sessionPrivateKey);
   const wallet = await client.createWallet({ signer: admin });
 
-  const session = await client.grantSession({
+  const session = await attributedGrantSession(client, {
     wallet,
     signer: admin,
     sessionSigner,
@@ -201,7 +209,7 @@ export async function runGuardedProcurement(
       );
 
   if (oracle.verdict !== "ALLOW" || !oracle.permit) {
-    await client.revokeSession({ wallet, signer: admin, session });
+    await attributedRevokeSession(client, { wallet, signer: admin, session });
     const pub = await import("viem").then((m) =>
       m.createPublicClient({
         chain: altanaChain.chain,

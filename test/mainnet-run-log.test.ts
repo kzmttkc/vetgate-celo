@@ -12,12 +12,24 @@ const SAMPLE_LOG = `# Celo mainnet
 |---|---|---|---|
 | deploy_pay_guard | \`0xabc\` | ok | 2026-01-01T00:00:00.000Z |
 | daily_small_use | \`0xdef\` | daily ALLOW utc=2026-11-23 | 2026-11-23T12:00:00.000Z |
+| demo_block_revert | \`0xrevert\` | stale relay row (superseded: relay path did not land on chain) | 2026-11-23T11:43:15.368Z |
+| demo_block_revert | \`0xfedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\` | BLOCK on chain | 2026-11-23T12:01:00.000Z |
 `;
 
 describe("MAINNET_RUN.md idempotency", () => {
   it("detects completed steps with real hashes", () => {
     expect(isStepDone("deploy_pay_guard", SAMPLE_LOG)).toBe(true);
     expect(isStepDone("altana_wallet_and_session", SAMPLE_LOG)).toBe(false);
+    expect(isStepDone("demo_block_revert", SAMPLE_LOG)).toBe(true);
+  });
+
+  it("ignores superseded 0xrevert placeholder rows", () => {
+    const onlyStale = `# log
+| Step | Tx hash | Note | UTC |
+|---|---|---|---|
+| demo_block_revert | \`0xrevert\` | stale (superseded: relay path did not land on chain) | t |
+`;
+    expect(isStepDone("demo_block_revert", onlyStale)).toBe(false);
   });
 
   it("detects daily UTC idempotency", () => {

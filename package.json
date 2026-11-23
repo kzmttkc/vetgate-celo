@@ -10,8 +10,8 @@
     "start": "tsx src/server.ts",
     "gen-testnet-key": "tsx scripts/gen-testnet-key.ts",
     "mainnet-plan": "tsx scripts/mainnet-plan.ts",
-    "mainnet-daily": "tsx scripts/daily.ts",
-    "check-no-keys": "tsx scripts/check-no-keys.ts"
+    "mainnet-daily": "node --import ./scripts/register-relay-attribution.mjs ./node_modules/tsx/dist/cli.mjs scripts/daily.ts",
+    "check-no-keys": "node scripts/check-no-keys.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -9,8 +9,17 @@ const dry = process.argv.includes("--dry");
 const extra = dry ? ["--dry"] : ["--i-understand-mainnet"];
 
 const result = spawnSync(
-  "npx",
-  ["tsx", "scripts/mainnet-run.ts", "--step", "7", "--daily", ...extra],
+  process.execPath,
+  [
+    "--import",
+    "./scripts/register-relay-attribution.mjs",
+    "./node_modules/tsx/dist/cli.mjs",
+    "scripts/mainnet-run.ts",
+    "--step",
+    "7",
+    "--daily",
+    ...extra,
+  ],
   {
     cwd: process.cwd(),
     env: {

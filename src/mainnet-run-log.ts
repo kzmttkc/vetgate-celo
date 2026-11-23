@@ -10,7 +10,29 @@ export const SESSION_META_PATH = join(process.cwd(), ".secrets", "session.json")
 /** ERC-8004 agent token already minted to admin on Celo mainnet (step 2 skip). */
 export const MAINNET_EXISTING_ERC8004_AGENT_ID = 9907n;
 
-const PLACEHOLDER_HASH = /^(—|_—_|0x0)$/i;
+const PLACEHOLDER_HASH = /^(—|_—_|0x0|0xrevert)$/i;
+
+function rowForStep(stepId: MainnetRunStepId, contents: string): string[] {
+  return contents
+    .split("\n")
+    .filter((line) => line.includes(`| ${stepId} |`) && line.trimStart().startsWith("|"));
+}
+
+export function markTxRowSuperseded(stepId: MainnetRunStepId, hash: string, reason: string): void {
+  let contents = readRunLogContents();
+  const rows = rowForStep(stepId, contents);
+  for (const row of rows) {
+    if (!row.includes(`\`${hash}\``)) continue;
+    if (/superseded/i.test(row)) continue;
+    const parts = row.split("|").map((p) => p.trim());
+    if (parts.length >= 4) {
+      parts[3] = `${parts[3]} (superseded: ${reason})`;
+    }
+    const updated = `| ${parts.slice(1, -1).join(" | ")} |`;
+    contents = contents.replace(row, updated);
+  }
+  writeFileSync(MAINNET_RUN_LOG_PATH, contents);
+}
 
 export function readRunLogContents(): string {
   if (!existsSync(MAINNET_RUN_LOG_PATH)) {
@@ -21,9 +43,10 @@ export function readRunLogContents(): string {
 
 /** True when the log table has a real tx hash for this step id. */
 export function isStepDone(stepId: MainnetRunStepId, contents = readRunLogContents()): boolean {
-  const pattern = new RegExp(`\\|\\s*${stepId}\\s*\\|\\s*\`([^\`]+)\``, "g");
-  for (const match of contents.matchAll(pattern)) {
-    const hash = match[1]?.trim() ?? "";
+  for (const row of rowForStep(stepId, contents)) {
+    if (/superseded/i.test(row)) continue;
+    const hashMatch = row.match(/\|\s*[^|]+\s*\|\s*`([^`]+)`/);
+    const hash = hashMatch?.[1]?.trim() ?? "";
     if (hash && !PLACEHOLDER_HASH.test(hash)) {
       return true;
     }

@@ -18,6 +18,7 @@ import {
   createWalletClient,
   encodeFunctionData,
   http,
+  keccak256,
   parseAbi,
   toFunctionSelector,
   type Hex,
@@ -25,6 +26,15 @@ import {
 import { celo } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 
+import {
+  attributedExecute,
+  attributedGrantSession,
+  attributedQuoteGrantSession,
+  attributedQuoteRevokeSession,
+  attributedRevokeSession,
+  ensureRelayAttributionSuffix,
+  tagRelayCalls,
+} from "./attributed-altana-client.js";
 import { appendAttributionSuffix } from "./attribution.js";
 import {
   buildTaggedPayWithPermitCalldata,
@@ -49,6 +59,7 @@ import {
   assertStepNotDone,
   isDailyPaymentDoneUtc,
   isStepDone,
+  markTxRowSuperseded,
   MAINNET_EXISTING_ERC8004_AGENT_ID,
   SESSION_KEY_PATH,
   SESSION_META_PATH,
@@ -97,7 +108,14 @@ export type MainnetRunOptions = {
 };
 
 const DEFAULT_FUND_UNITS = 200_000n;
-const DEFAULT_BLOCK_GAS = 600_000n;
+/** Fixed gas for on-chain BLOCK demo from Altana admin EOA (verdict revert must land on chain). */
+export const BLOCK_DIRECT_GAS = 200_000n;
+const DEFAULT_BLOCK_GAS = BLOCK_DIRECT_GAS;
+const ONE_CELO_WEI = 1_000_000_000_000_000_000n;
+
+const KEYSTORE_ABI = parseAbi([
+  "function isValidKey(address user, bytes32 keyId) view returns (bool)",
+]);
 
 export function assertMainnetChain(allowTestnet: boolean): void {
   const runtime = resolveCeloRuntime();
@@ -206,10 +224,10 @@ async function ensurePayGuardUsdcAllowance(params: {
     data: approveTagged,
   });
   if (params.dry) return;
-  const approved = await params.client.execute({
+  const approved = await attributedExecute(params.client, {
     wallet,
     signer: altanaSigner,
-    calls: [{ to: CELO_MAINNET_USDC, data: approveTagged }],
+    calls: tagRelayCalls([{ to: CELO_MAINNET_USDC, data: approveTagged }]),
     chainId: CELO_MAINNET_CHAIN_ID,
     feeToken: CELO_MAINNET_USDC,
   });
@@ -289,10 +307,10 @@ function persistSessionKey(
   upsertRunMetadata("buyer_wallet", walletAddress);
 }
 
-function loadBuyerSession(): {
-  client: Client;
+function loadBuyerSessionFromDisk(): {
   session: Session;
   walletAddress: `0x${string}`;
+  sessionPk: `0x${string}`;
 } {
   const sessionPk = readFileSync(SESSION_KEY_PATH, "utf8").trim() as `0x${string}`;
   const stored = JSON.parse(readFileSync(SESSION_META_PATH, "utf8")) as ReturnType<
@@ -300,8 +318,132 @@ function loadBuyerSession(): {
   >;
   const sessionSigner = signerFromPrivateKey(sessionPk);
   const session = deserializeSession(stored, sessionSigner);
-  const client = createClient({ chains: [CELO], agentIdentity: false });
-  return { client, session, walletAddress: stored.walletAddress };
+  return { session, walletAddress: stored.walletAddress, sessionPk };
+}
+
+function buyerClient(): Client {
+  return createClient({ chains: [CELO], agentIdentity: false });
+}
+
+function loadBuyerSession(): {
+  client: Client;
+  session: Session;
+  walletAddress: `0x${string}`;
+} {
+  const { session, walletAddress } = loadBuyerSessionFromDisk();
+  return { client: buyerClient(), session, walletAddress };
+}
+
+function grantQuoteNativeFee(quote: unknown): bigint {
+  const q = quote as {
+    maxFee?: bigint;
+    fee?: bigint;
+    lines?: Array<{ fee?: bigint; maxFee?: bigint }>;
+  };
+  if (q.maxFee !== undefined) return q.maxFee;
+  if (q.fee !== undefined) return q.fee;
+  let total = 0n;
+  for (const line of q.lines ?? []) {
+    total += line.maxFee ?? line.fee ?? 0n;
+  }
+  return total;
+}
+
+async function isBuyerSessionLive(
+  walletAddress: `0x${string}`,
+  session: Session,
+): Promise<boolean> {
+  if (session.expiry <= Math.floor(Date.now() / 1000)) return false;
+  try {
+    return await publicClient().readContract({
+      address: CELO.keyStore,
+      abi: KEYSTORE_ABI,
+      functionName: "isValidKey",
+      args: [walletAddress, keccak256(session.publicKey as Hex)],
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function regrantBuyerSession(opts: MainnetRunOptions, note: string): Promise<void> {
+  const client = buyerClient();
+  const altanaSigner = signerFromPrivateKey(opts.altanaPk);
+  const wallet = { address: MAINNET_ALTANA_ADMIN_ADDRESS };
+  const sessionPk = (process.env.VETGATE_SESSION_PK ?? generatePrivateKey()) as `0x${string}`;
+  const sessionSigner = signerFromPrivateKey(sessionPk);
+  const expiry = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60;
+  const permissions = sessionPermissions(opts.payGuard);
+
+  const quote = await attributedQuoteGrantSession(client, {
+    wallet,
+    signer: altanaSigner,
+    sessionSigner,
+    chainId: CELO_MAINNET_CHAIN_ID,
+    feeToken: CELO_MAINNET_USDC,
+    permissions,
+    expiry,
+  });
+  const feeWei = grantQuoteNativeFee(quote);
+  if (feeWei > ONE_CELO_WEI) {
+    throw new Error(
+      `refused: grantSession relay quote ${feeWei.toString()} wei (max ${ONE_CELO_WEI.toString()} = 1 CELO)`,
+    );
+  }
+  printDryCall("regrant_session_quote", {
+    note,
+    feeWei: feeWei.toString(),
+    wallet: wallet.address,
+    expiry,
+  });
+
+  if (opts.dry) return;
+
+  const grant = await attributedGrantSession(client, {
+    wallet,
+    signer: altanaSigner,
+    sessionSigner,
+    chainId: CELO_MAINNET_CHAIN_ID,
+    feeToken: CELO_MAINNET_USDC,
+    permissions,
+    expiry,
+  });
+  persistSessionKey(sessionPk, grant, wallet.address);
+  if (grant.transactionHash) {
+    appendTxRow(
+      "altana_wallet_and_session",
+      grant.transactionHash,
+      `regrantSession after ${note} (+ ERC-8021 relay suffix)`,
+    );
+  }
+}
+
+async function resolveLiveBuyerSession(
+  opts: MainnetRunOptions,
+  reason: string,
+): Promise<{ client: Client; session: Session; walletAddress: `0x${string}` }> {
+  let disk: ReturnType<typeof loadBuyerSessionFromDisk> | undefined;
+  try {
+    disk = loadBuyerSessionFromDisk();
+  } catch {
+    disk = undefined;
+  }
+
+  const client = buyerClient();
+  if (disk && (await isBuyerSessionLive(disk.walletAddress, disk.session))) {
+    return { client, session: disk.session, walletAddress: disk.walletAddress };
+  }
+
+  await regrantBuyerSession(opts, reason);
+  if (opts.dry) {
+    if (disk) {
+      return { client, session: disk.session, walletAddress: disk.walletAddress };
+    }
+    throw new Error(`${reason}: no session on disk; run step 3 or live regrant first`);
+  }
+
+  const fresh = loadBuyerSessionFromDisk();
+  return { client, session: fresh.session, walletAddress: fresh.walletAddress };
 }
 
 export async function runMainnetStep(
@@ -309,6 +451,7 @@ export async function runMainnetStep(
   opts: MainnetRunOptions,
 ): Promise<void> {
   assertMainnetChain(opts.allowTestnet);
+  await ensureRelayAttributionSuffix();
   const runtime = resolveCeloRuntime();
   const oracleAccount = privateKeyToAccount(opts.oraclePk);
   const altanaAccount = privateKeyToAccount(opts.altanaPk);
@@ -368,11 +511,11 @@ export async function runMainnetStep(
       printDryCall("register_erc8004", { wallet: wallet.address, to: call.to, data: tagged });
       return;
     }
-    const result = await client.execute({
+    const result = await attributedExecute(client, {
       wallet,
       signer: admin,
       chainId: CELO_MAINNET_CHAIN_ID,
-      calls: [{ to: call.to, data: tagged }],
+      calls: tagRelayCalls([{ to: call.to, data: tagged }]),
       feeToken: CELO_MAINNET_USDC,
     });
     if (result.transactionHash) {
@@ -419,7 +562,7 @@ export async function runMainnetStep(
         selector: formatPayGuardSelector(),
       });
       try {
-        const quote = await client.quoteGrantSession({
+        const quote = await attributedQuoteGrantSession(client, {
           wallet,
           signer: altanaSigner,
           sessionSigner,
@@ -455,7 +598,7 @@ export async function runMainnetStep(
       appendTxRow(`${stepId}_fund`, fundHash, `admin USDC fund ${fundUnits} units → buyer wallet`);
     }
 
-    const grant = await client.grantSession({
+    const grant = await attributedGrantSession(client, {
       wallet,
       signer: altanaSigner,
       sessionSigner,
@@ -472,7 +615,11 @@ export async function runMainnetStep(
     return;
   }
 
-  const { client, session, walletAddress } = loadBuyerSession();
+  const buyerLoaded =
+    stepId === "daily_small_use" && opts.daily
+      ? await resolveLiveBuyerSession(opts, "daily_small_use")
+      : { ...loadBuyerSession() };
+  const { client, session, walletAddress } = buyerLoaded;
 
   if (stepId === "demo_allow_payment") {
     if (guardOnce) assertStepNotDone(stepId);
@@ -584,11 +731,20 @@ export async function runMainnetStep(
       amount: MAINNET_DEMO_PAYMENT_UNITS,
       verdict: 0,
     });
+    const gasLimit = opts.blockGasCap ?? DEFAULT_BLOCK_GAS;
 
     if (opts.dry) {
       printDryCall("demo_block_revert", {
+        mode: "direct_eoa",
+        from: walletAddress,
+        to: opts.payGuard,
         data: tagged,
-        gasCap: (opts.blockGasCap ?? DEFAULT_BLOCK_GAS).toString(),
+        gas: gasLimit.toString(),
+        note: "Altana admin EOA sendTransaction (expect VerdictNotAllow on chain)",
+      });
+      printDryCall("demo_block_revert", {
+        data: tagged,
+        gasCap: gasLimit.toString(),
       });
       try {
         const quote = await client.quoteExecute({
@@ -621,19 +777,30 @@ export async function runMainnetStep(
       return;
     }
 
-    try {
-      const exec = await client.execute({
-        session,
-        calls: [{ to: opts.payGuard, data: tagged }],
-        chainId: CELO_MAINNET_CHAIN_ID,
-        feeToken: CELO_MAINNET_USDC,
-      });
-      appendTxRow(stepId, exec.transactionHash ?? "0x0", "unexpected success (expected revert)");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      appendTxRow(stepId, "0xrevert", `BLOCK revert visible: ${msg.slice(0, 120)}`);
-      console.log(`demo_block_revert: on-chain revert (${msg.slice(0, 200)})`);
+    markTxRowSuperseded("demo_block_revert", "0xrevert", "relay path did not land on chain");
+
+    const walletClient = createWalletClient({
+      account: altanaAccount,
+      chain: celo,
+      transport: http(runtime.rpc),
+    });
+    const hash = await walletClient.sendTransaction({
+      to: opts.payGuard,
+      data: tagged,
+      gas: gasLimit,
+      value: 0n,
+    });
+    const receipt = await publicClient().waitForTransactionReceipt({ hash });
+    if (receipt.status === "success") {
+      appendTxRow(stepId, hash, "unexpected success (expected VerdictNotAllow revert)");
+      return;
     }
+    appendTxRow(
+      stepId,
+      hash,
+      "BLOCK direct EOA payWithPermit verdict=0 (VerdictNotAllow), gas=200000, ERC-8021 suffix",
+    );
+    console.log(`demo_block_revert: on-chain revert tx ${hash}`);
     return;
   }
 
@@ -642,7 +809,7 @@ export async function runMainnetStep(
     const altanaSigner = signerFromPrivateKey(opts.altanaPk);
     const wallet = { address: walletAddress };
     if (opts.dry) {
-      const quote = await client.quoteRevokeSession({
+      const quote = await attributedQuoteRevokeSession(client, {
         wallet,
         signer: altanaSigner,
         session,
@@ -669,7 +836,7 @@ export async function runMainnetStep(
       return;
     }
 
-    const revoked = await client.revokeSession({
+    const revoked = await attributedRevokeSession(client, {
       wallet,
       signer: altanaSigner,
       session,
@@ -677,7 +844,7 @@ export async function runMainnetStep(
       feeToken: CELO_MAINNET_USDC,
     });
     if (revoked.transactionHash) {
-      appendTxRow(stepId, revoked.transactionHash, "revokeSession");
+      appendTxRow(stepId, revoked.transactionHash, "revokeSession (+ ERC-8021 relay suffix)");
     }
     const probe = buildPayWithPermitCalldata({
       payGuard: opts.payGuard,
@@ -715,12 +882,12 @@ export async function runMainnetStep(
     assertSellerNotAdmin(seller.payTo);
 
     if (opts.dry) {
-      printDryCall("daily_small_use", { utcDay: day, amount: MAINNET_DEMO_PAYMENT_UNITS.toString() });
+      printDryCall("daily_small_use", {
+        utcDay: day,
+        amount: MAINNET_DEMO_PAYMENT_UNITS.toString(),
+        sessionWallet: walletAddress,
+      });
       return;
-    }
-
-    if (isStepDone("revoke_session")) {
-      throw new Error("daily_small_use: session revoked — re-run step 3 first");
     }
 
     const selfAgent = new SelfAgent({

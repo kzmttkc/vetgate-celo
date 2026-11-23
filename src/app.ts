@@ -143,6 +143,15 @@ export function createApp(cfg: CreateAppConfig): Express {
   };
 
   const app = express();
+
+  app.get("/health", (_req, res) => {
+    res.status(200).json({
+      ok: true,
+      network: celo.network,
+      chainId: celo.chainId,
+    });
+  });
+
   app.use(
     express.json({
       verify: (req, _res, buf) => {
