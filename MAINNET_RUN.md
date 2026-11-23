@@ -37,4 +37,4 @@ npx tsx scripts/daily.ts --i-understand-mainnet
 - oracle_signer: `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435`
 - altana_admin: `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941`
 - erc8004_agent: `9907`（step 2 skip）
-- demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile`（vet402 ALLOW → payTo on Celo）
+- demo_seller_default: `https://gateway.usebuy.ai/v1/social/tiktok/profile`（vet402 ALLOW → payTo on Celo）| demo_block_revert | `0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e` | BLOCK direct EOA payWithPermit verdict=0 (VerdictNotAllow), gas=200000, ERC-8021 suffix | 2026-11-23T11:49:23.012Z |
