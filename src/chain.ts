@@ -47,7 +47,7 @@ export type VetgateCeloNetwork = "testnet" | "mainnet";
 export type CeloRuntime = {
   network: VetgateCeloNetwork;
   chainId: number;
-  caip2: string;
+  caip2: `${string}:${string}`;
   rpc: string;
   usdc: `0x${string}`;
   facilitatorUrl: string;

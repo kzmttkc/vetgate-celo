@@ -166,20 +166,15 @@ export function createApp(cfg: CreateAppConfig): Express {
 
   app.use("/v1", (req, res, next) => {
     if (req.path === "/stats") return next();
-    return selfAuth(req, res, (err: unknown) => {
-      if (err) {
-        return res.status(403).json({
-          error: "self_verification_failed",
-          message: `Self Agent ID verification failed. Register on Celo ${celo.selfNetwork} before calling VetGate.`,
-        });
-      }
+    return selfAuth(req, res, () => {
       if (!req.agent) {
-        return res.status(401).json({
+        res.status(401).json({
           error: "self_agent_required",
           message: "Missing or invalid Self Agent ID request signature (x-self-agent-signature, x-self-agent-timestamp).",
         });
+        return;
       }
-      return next();
+      next();
     });
   });
 
@@ -188,7 +183,7 @@ export function createApp(cfg: CreateAppConfig): Express {
       error: "x402_payment_required",
       message:
         `Daily free human quota exhausted. Pay $0.01 USDC on Celo ${celo.network} via x402 to continue.`,
-      x402: routes["GET /v1/permit"],
+      x402: routes["GET /v1/permit" as keyof RoutesConfig],
       network: celo.caip2,
     });
 

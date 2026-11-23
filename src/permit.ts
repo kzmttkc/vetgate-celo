@@ -33,6 +33,9 @@ export async function mintVetGatePermit(params: MintPermitParams): Promise<VetGa
   const nonce = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
   const token = params.token ?? runtime.usdc;
 
+  if (!params.oracleAccount.signTypedData) {
+    throw new Error("Oracle account cannot sign typed data");
+  }
   const signature = await params.oracleAccount.signTypedData({
     domain: {
       name: "VetGatePayGuard",

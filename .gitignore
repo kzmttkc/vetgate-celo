@@ -15,7 +15,10 @@ broadcast/
 # Build / coverage
 dist/
 coverage/
+api/index.mjs
 
 # OS / editor
 .DS_Store
 *.log
+.vercel
+.env*

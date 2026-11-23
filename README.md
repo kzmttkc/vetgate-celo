@@ -49,13 +49,13 @@ The operator wallet mints permits and deploys PayGuard. The buyer admin wallet i
 | ERC-8021 on relay + calls | [attributed-altana-client.ts](src/attributed-altana-client.ts), [attribution.ts](src/attribution.ts) |
 | Mainnet step runner | [mainnet-executor.ts](src/mainnet-executor.ts), [scripts/mainnet-run.ts](scripts/mainnet-run.ts) |
 | Daily idempotent loop | [scripts/daily.ts](scripts/daily.ts), operator EOA `payWithPermit` in [mainnet-executor.ts](src/mainnet-executor.ts) step 7 |
-| Vercel deploy | [vercel.json](vercel.json), [api/index.ts](api/index.ts), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
+| Vercel deploy | [vercel.json](vercel.json), [src/vercel-api.ts](src/vercel-api.ts), [scripts/build-vercel-api.mjs](scripts/build-vercel-api.mjs) |
 | Fly deploy (optional) | [fly.toml](fly.toml), [Dockerfile](Dockerfile), health [app.ts](src/app.ts) |
 | Secret leak guard | [scripts/check-no-keys.mjs](scripts/check-no-keys.mjs) |
 
 ## Hosting on Vercel
 
-The Express app is exported from [api/index.ts](api/index.ts). [vercel.json](vercel.json) rewrites all paths to that function.
+The Express app is bundled to `api/index.mjs` at build time from [src/vercel-api.ts](src/vercel-api.ts) (esbuild, ESM) so `@noble/ed25519` is not loaded via `require()` on Vercel. [vercel.json](vercel.json) rewrites all paths to `/api`.
 
 **Production environment variables** (set in the Vercel dashboard or CLI):
 
