@@ -6,11 +6,7 @@ import { HTTPFacilitatorClient, type RoutesConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
-import {
-  CELO_SEPOLIA_CAIP2,
-  CELO_SEPOLIA_USDC,
-  DEFAULT_FACILITATOR_URL,
-} from "./chain.js";
+import { resolveCeloRuntime } from "./chain.js";
 import { DailyHumanQuota } from "./daily-quota.js";
 import { mintVetGatePermit } from "./permit.js";
 import { parseTeamWallets, StatsStore } from "./stats.js";
@@ -91,6 +87,7 @@ async function buildPermitResponse(
 }
 
 export function createApp(cfg: CreateAppConfig): Express {
+  const celo = resolveCeloRuntime();
   const teamWallets = parseTeamWallets(cfg.teamWalletsCsv);
   const dailyQuota = cfg.dailyQuota ?? new DailyHumanQuota();
   const stats = cfg.stats ?? new StatsStore(teamWallets);
@@ -98,7 +95,7 @@ export function createApp(cfg: CreateAppConfig): Express {
   const selfAuth =
     cfg.selfAuth ??
     SelfAgentVerifier.create()
-      .network("testnet")
+      .network(celo.selfNetwork)
       .sybilLimit(0)
       .requireAge(18)
       .requireOFAC()
@@ -109,11 +106,11 @@ export function createApp(cfg: CreateAppConfig): Express {
     "GET /v1/permit": {
       accepts: {
         scheme: "exact",
-        network: CELO_SEPOLIA_CAIP2,
+        network: celo.caip2,
         payTo: cfg.payTo,
         price: {
           amount: "10000",
-          asset: CELO_SEPOLIA_USDC,
+          asset: celo.usdc,
           extra: { name: "USDC", version: "2" },
         },
       },
@@ -155,7 +152,7 @@ export function createApp(cfg: CreateAppConfig): Express {
   );
 
   app.get("/v1/stats", (_req, res) => {
-    res.json({ network: CELO_SEPOLIA_CAIP2, stats: stats.snapshot() });
+    res.json({ network: celo.caip2, stats: stats.snapshot() });
   });
 
   app.use("/v1", (req, res, next) => {
@@ -164,7 +161,7 @@ export function createApp(cfg: CreateAppConfig): Express {
       if (err) {
         return res.status(403).json({
           error: "self_verification_failed",
-          message: "Self Agent ID verification failed. Register on Celo Sepolia testnet before calling VetGate.",
+          message: `Self Agent ID verification failed. Register on Celo ${celo.selfNetwork} before calling VetGate.`,
         });
       }
       if (!req.agent) {
@@ -181,9 +178,9 @@ export function createApp(cfg: CreateAppConfig): Express {
     res.status(402).json({
       error: "x402_payment_required",
       message:
-        "Daily free human quota exhausted. Pay $0.01 USDC on Celo Sepolia via x402 to continue.",
+        `Daily free human quota exhausted. Pay $0.01 USDC on Celo ${celo.network} via x402 to continue.`,
       x402: routes["GET /v1/permit"],
-      network: CELO_SEPOLIA_CAIP2,
+      network: celo.caip2,
     });
 
   app.get("/v1/permit", async (req, res, next) => {
@@ -217,14 +214,14 @@ export function createApp(cfg: CreateAppConfig): Express {
 
   if (cfg.enableX402 && cfg.x402ApiKey) {
     const facilitator = new HTTPFacilitatorClient({
-      url: cfg.facilitatorUrl ?? DEFAULT_FACILITATOR_URL,
+      url: cfg.facilitatorUrl ?? celo.facilitatorUrl,
       createAuthHeaders: async () => {
         const h = { "X-API-Key": cfg.x402ApiKey! };
         return { verify: h, settle: h, supported: h };
       },
     });
     const x402Server = new x402ResourceServer(facilitator).register(
-      CELO_SEPOLIA_CAIP2,
+      celo.caip2,
       new ExactEvmScheme(),
     );
     app.use(paymentMiddleware(routes, x402Server, undefined, undefined, false));

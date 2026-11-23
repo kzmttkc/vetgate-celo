@@ -43,6 +43,8 @@ describe("agent-buyer (Altana mock)", () => {
     if (res.status === "paid_under_guard") {
       expect(res.execTxHash).toMatch(/^0x/);
       expect(res.attributionSuffix).toMatch(/^0x/);
+      const { fromDataSuffix } = await import("@celo/attribution-tags");
+      expect(fromDataSuffix(res.attributionSuffix)?.codes).toContain("celo_56284feb7672");
     }
   });
 

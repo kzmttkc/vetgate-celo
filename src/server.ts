@@ -1,22 +1,26 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createApp } from "./app.js";
+import { resolveCeloRuntime } from "./chain.js";
 
 function loadOracleKey(): `0x${string}` | undefined {
   if (process.env.VETGATE_ORACLE_SIGNER_PK) {
     return process.env.VETGATE_ORACLE_SIGNER_PK as `0x${string}`;
   }
-  const file = join(process.cwd(), ".secrets", "testnet.key");
+  const runtime = resolveCeloRuntime();
+  const secretName = runtime.network === "mainnet" ? "mainnet-admin.key" : "testnet.key";
+  const file = join(process.cwd(), ".secrets", secretName);
   if (existsSync(file)) {
     return readFileSync(file, "utf8").trim() as `0x${string}`;
   }
   return undefined;
 }
 
+const celo = resolveCeloRuntime();
 const oraclePk = loadOracleKey();
 if (!oraclePk) {
   console.error(
-    "Missing oracle key: set VETGATE_ORACLE_SIGNER_PK or run npm run gen-testnet-key",
+    `Missing oracle key: set VETGATE_ORACLE_SIGNER_PK or create .secrets/${celo.network === "mainnet" ? "mainnet-admin.key" : "testnet.key"}`,
   );
   process.exit(1);
 }
@@ -37,5 +41,7 @@ const app = createApp({
 
 const port = Number(process.env.PORT ?? 3001);
 app.listen(port, () => {
-  console.log(`VetGate oracle listening on :${port} (Celo Sepolia ${11142220} only)`);
+  console.log(
+    `VetGate oracle listening on :${port} (Celo ${celo.network} chainId=${celo.chainId})`,
+  );
 });

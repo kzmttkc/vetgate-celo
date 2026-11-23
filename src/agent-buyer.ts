@@ -1,22 +1,13 @@
 /**
- * Altana buyer on Celo Sepolia (11142220). Live path uses @altananetwork/sdk CELO_SEPOLIA;
- * set VETGATE_ALTANA_MOCK=1 to exercise ALLOW/BLOCK/revoke without relay RPC (unit tests / CI).
+ * Altana buyer on Celo (testnet or mainnet via VETGATE_CELO_NETWORK).
+ * Set VETGATE_ALTANA_MOCK=1 for ALLOW/BLOCK/revoke without relay RPC (unit tests / CI).
  */
-import { createClient, CELO_SEPOLIA, signerFromPrivateKey } from "@altananetwork/sdk";
+import { createClient, CELO, CELO_SEPOLIA, signerFromPrivateKey } from "@altananetwork/sdk";
 import { SelfAgent } from "@selfxyz/agent-sdk";
-import { toDataSuffix } from "@celo/attribution-tags";
-import {
-  concat,
-  encodeFunctionData,
-  keccak256,
-  parseAbi,
-} from "viem";
+import { appendAttributionSuffix, attributionSuffix } from "./attribution.js";
+import { encodeFunctionData, keccak256, parseAbi } from "viem";
 
-import {
-  CELO_SEPOLIA_RPC,
-  CELO_SEPOLIA_USDC,
-  PLACEHOLDER_ATTRIBUTION_TAG,
-} from "./chain.js";
+import { resolveAttributionCode, resolveCeloRuntime } from "./chain.js";
 
 const PAY_GUARD_ABI = parseAbi([
   "function payWithPermit(address payTo, address token, uint256 amount, uint256 maxAmount, uint256 expiresAt, bytes32 nonce, uint8 verdict, bytes signature, bytes attributionTag) external",
@@ -82,8 +73,8 @@ export async function fetchOraclePermit(
 export async function runGuardedProcurement(
   params: GuardedProcurementParams,
 ): Promise<GuardedProcurementResult> {
-  const attributionCode = params.attributionCode ?? PLACEHOLDER_ATTRIBUTION_TAG;
-  const attributionSuffix = toDataSuffix(attributionCode);
+  const attributionCode = params.attributionCode ?? resolveAttributionCode();
+  const suffix = attributionSuffix(attributionCode);
 
   if (useAltanaMock()) {
     const oracle = params.mockOracle ?? {
@@ -100,10 +91,12 @@ export async function runGuardedProcurement(
     }
     const execTxHash =
       params.mockExecuteTxHash ?? (`0x${"ab".repeat(32)}` as `0x${string}`);
-    return { status: "paid_under_guard", execTxHash, attributionSuffix };
+    return { status: "paid_under_guard", execTxHash, attributionSuffix: suffix };
   }
 
-  const client = createClient({ chains: [CELO_SEPOLIA] });
+  const runtime = resolveCeloRuntime();
+  const altanaChain = runtime.network === "mainnet" ? CELO : CELO_SEPOLIA;
+  const client = createClient({ chains: [altanaChain] });
   const admin = signerFromPrivateKey(params.adminPrivateKey);
   const sessionSigner = signerFromPrivateKey(params.sessionPrivateKey);
   const wallet = await client.createWallet({ signer: admin });
@@ -112,19 +105,19 @@ export async function runGuardedProcurement(
     wallet,
     signer: admin,
     sessionSigner,
-    chainId: CELO_SEPOLIA.chainId,
-    feeToken: CELO_SEPOLIA_USDC,
+    chainId: altanaChain.chainId,
+    feeToken: runtime.usdc,
     permissions: {
       calls: [{ to: params.payGuardAddress }],
-      spend: [{ limit: 1_000_000n, period: "day", token: CELO_SEPOLIA_USDC }],
+      spend: [{ limit: 1_000_000n, period: "day", token: runtime.usdc }],
     },
     expiry: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
   });
 
   const selfAgent = new SelfAgent({
     privateKey: params.selfAgentPrivateKey,
-    network: "testnet",
-    rpcUrl: CELO_SEPOLIA_RPC,
+    network: runtime.selfNetwork,
+    rpcUrl: runtime.rpc,
   });
 
   const oracle = params.mockOracle
@@ -141,12 +134,12 @@ export async function runGuardedProcurement(
     await client.revokeSession({ wallet, signer: admin, session });
     const pub = await import("viem").then((m) =>
       m.createPublicClient({
-        chain: CELO_SEPOLIA.chain,
-        transport: m.http(CELO_SEPOLIA.publicRpcUrl),
+        chain: altanaChain.chain,
+        transport: m.http(altanaChain.publicRpcUrl),
       }),
     );
     const activeAfterRevoke = await pub.readContract({
-      address: CELO_SEPOLIA.keyStore,
+      address: altanaChain.keyStore,
       abi: KEYSTORE_ABI,
       functionName: "isValidKey",
       args: [wallet.address, keccak256(session.publicKey as `0x${string}`)],
@@ -174,7 +167,7 @@ export async function runGuardedProcurement(
       attributionCode,
     ],
   });
-  const taggedData = concat([innerCalldata, attributionSuffix]);
+  const taggedData = appendAttributionSuffix(innerCalldata, attributionCode);
 
   const execRes = await client.execute({
     wallet,
@@ -186,5 +179,5 @@ export async function runGuardedProcurement(
     (execRes as { transactionHash?: `0x${string}` }).transactionHash ??
     (`0x${"00".repeat(32)}` as `0x${string}`);
 
-  return { status: "paid_under_guard", execTxHash, attributionSuffix };
+  return { status: "paid_under_guard", execTxHash, attributionSuffix: suffix };
 }

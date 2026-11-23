@@ -38,5 +38,5 @@
 ## 実施しなかったもの（仕様どおり）
 
 - GitHub push / 公開ホストデプロイ
-- mainnet（42220）RPC・トランザクション
+- mainnet 送信（`scripts/mainnet-run.ts` — 計画は `mainnet-plan.ts` のみ実施済み）
 - `~/.vet402-keys`、実値 `.env`、`~/vouch` の参照

@@ -8,7 +8,8 @@
     "test:watch": "vitest",
     "build": "tsc -p tsconfig.json --noEmit",
     "start": "tsx src/server.ts",
-    "gen-testnet-key": "tsx scripts/gen-testnet-key.ts"
+    "gen-testnet-key": "tsx scripts/gen-testnet-key.ts",
+    "mainnet-plan": "tsx scripts/mainnet-plan.ts"
   },
   "engines": {
     "node": ">=20"
