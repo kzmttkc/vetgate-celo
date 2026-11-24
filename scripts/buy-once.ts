@@ -5,6 +5,7 @@
  */
 import { privateKeyToAccount } from "viem/accounts";
 
+import { MAINNET_ADMIN_ADDRESS } from "../src/chain.js";
 import { loadOracleKey } from "../src/oracle-bootstrap.js";
 import { runBuyOnceDry, runBuyOnceLive, syncBuyOnceNetworkEnv } from "../src/x402-buy-once.js";
 
@@ -16,32 +17,40 @@ function parseDry(): boolean {
 async function main(): Promise<void> {
   syncBuyOnceNetworkEnv();
   const dry = parseDry();
+  const withSignedPayload =
+    process.argv.includes("--with-signed-payload") || !dry;
+
+  if (dry) {
+    const pk = loadOracleKey();
+    const payerOverride = process.env.VETGATE_BUY_ONCE_PAYER as `0x${string}` | undefined;
+    const payer =
+      payerOverride ??
+      (pk ? privateKeyToAccount(pk).address : (MAINNET_ADMIN_ADDRESS as `0x${string}`));
+
+    const result = await runBuyOnceDry({
+      payer,
+      payerPrivateKey: pk ?? undefined,
+      includeSignedPayload: withSignedPayload,
+    });
+    const out: Record<string, unknown> = {
+      mode: result.mode,
+      sellerUrl: result.quote.sellerUrl,
+      requestUrl: result.quote.requestUrl,
+      httpStatus: 402,
+      paymentRequired: result.quote.paymentRequired,
+      selectedAccept: result.quote.accept,
+      eip3009SignPreview: result.eip3009,
+    };
+    if (result.paymentPayloadV2 !== undefined) {
+      out.paymentPayloadV2 = result.paymentPayloadV2;
+    }
+    console.log(JSON.stringify(out, null, 2));
+    return;
+  }
 
   const pk = loadOracleKey();
   if (!pk) {
     throw new Error("missing operator key (VETGATE_ORACLE_SIGNER_PK or .secrets/mainnet-admin.key)");
-  }
-  const payer = privateKeyToAccount(pk).address;
-
-  if (dry) {
-    const result = await runBuyOnceDry({ payer, payerPrivateKey: pk });
-    console.log(
-      JSON.stringify(
-        {
-          mode: result.mode,
-          sellerUrl: result.quote.sellerUrl,
-          requestUrl: result.quote.requestUrl,
-          httpStatus: 402,
-          paymentRequired: result.quote.paymentRequired,
-          selectedAccept: result.quote.accept,
-          eip3009SignPreview: result.eip3009,
-          paymentPayloadV2: result.paymentPayloadV2,
-        },
-        null,
-        2,
-      ),
-    );
-    return;
   }
 
   const live = await runBuyOnceLive({ payerPrivateKey: pk });

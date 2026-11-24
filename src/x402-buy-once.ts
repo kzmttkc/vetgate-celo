@@ -407,17 +407,26 @@ export type BuyOnceDryResult = {
   mode: "dry";
   quote: SelectedX402Quote;
   eip3009: Eip3009SignPreview;
-  paymentPayloadV2: PaymentPayload;
+  paymentPayloadV2?: PaymentPayload;
 };
 
 export async function runBuyOnceDry(params: {
   payer: `0x${string}`;
-  payerPrivateKey: `0x${string}`;
+  payerPrivateKey?: `0x${string}`;
+  includeSignedPayload?: boolean;
   fetchImpl?: typeof fetch;
 }): Promise<BuyOnceDryResult> {
   const fetchImpl = params.fetchImpl ?? fetch;
   const quote = await discoverCheapestUsefulQuote(fetchImpl);
   const eip3009 = buildEip3009SignPreview({ accept: quote.accept, payer: params.payer });
+  if (!params.includeSignedPayload) {
+    return { mode: "dry", quote, eip3009 };
+  }
+  if (!params.payerPrivateKey) {
+    throw new Error(
+      "missing operator key for signed payload (VETGATE_ORACLE_SIGNER_PK or .secrets/mainnet-admin.key)",
+    );
+  }
   const paymentPayloadV2 = await buildBuyOnceV2PaymentPayload({
     httpRequest: quote.httpRequest,
     payerPrivateKey: params.payerPrivateKey,
