@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { MainnetRunStepId } from "./mainnet-runbook.js";
@@ -87,16 +87,22 @@ export function appendTxRow(
   hash: string,
   note: string,
 ): void {
-  const line = `| ${stepId} | \`${hash}\` | ${note} | ${new Date().toISOString()} |\n`;
-  const contents = readRunLogContents();
+  const line = `| ${stepId} | \`${hash}\` | ${note} | ${new Date().toISOString()} |`;
+  let contents = readRunLogContents();
   if (!contents.includes("| Step |")) {
     writeFileSync(
       MAINNET_RUN_LOG_PATH,
-      `# Celo mainnet run log (42220)\n\n| Step | Tx hash | Note | UTC |\n|---|---|---|---|\n${line}`,
+      `# Celo mainnet run log (42220)\n\n| Step | Tx hash | Note | UTC |\n|---|---|---|---|\n${line}\n`,
     );
     return;
   }
-  appendFileSync(MAINNET_RUN_LOG_PATH, line);
+  const runStateMarker = "\n## Run state\n";
+  if (contents.includes(runStateMarker)) {
+    contents = contents.replace(runStateMarker, `\n${line}\n${runStateMarker}`);
+  } else {
+    contents = `${contents.trimEnd()}\n${line}\n`;
+  }
+  writeFileSync(MAINNET_RUN_LOG_PATH, contents);
 }
 
 /** UTC calendar day already has a completed daily_small_use row. */
