@@ -166,7 +166,17 @@ export function createApp(cfg: CreateAppConfig): Express {
 
   app.use("/v1", (req, res, next) => {
     if (req.path === "/stats") return next();
-    return selfAuth(req, res, () => {
+    return selfAuth(req, res, (err) => {
+      if (err) {
+        res.status(403).json({
+          error: "self_verification_failed",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Self agent verification failed.",
+        });
+        return;
+      }
       if (!req.agent) {
         res.status(401).json({
           error: "self_agent_required",

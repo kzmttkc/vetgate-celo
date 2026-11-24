@@ -22,8 +22,12 @@ function mockSelfAgent(address: string, nullifier = "42"): RequestHandler {
   };
 }
 
-const fakeSelfAuthFail: RequestHandler = (_req, res) => {
-  res.status(401).json({ error: "self_agent_required" });
+const fakeSelfAuthNoAgent: RequestHandler = (_req, _res, done) => {
+  done();
+};
+
+const fakeSelfAuthVerifyFail: RequestHandler = (_req, _res, done) => {
+  done(new Error("invalid self agent signature"));
 };
 
 describe("VetGate server", () => {
@@ -45,16 +49,28 @@ describe("VetGate server", () => {
     expect(res.body.ok).toBe(true);
   });
 
-  it("returns 401 JSON when Self auth fails", async () => {
+  it("returns 401 JSON when Self agent is missing after verification", async () => {
     const app = createApp({
       payTo: oracleAddr,
       payGuardAddress: payGuard,
       oraclePrivateKey: ORACLE_PK,
-      selfAuth: fakeSelfAuthFail,
+      selfAuth: fakeSelfAuthNoAgent,
     });
     const res = await request(app).get("/v1/permit");
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("self_agent_required");
+  });
+
+  it("returns 403 JSON when Self verification fails", async () => {
+    const app = createApp({
+      payTo: oracleAddr,
+      payGuardAddress: payGuard,
+      oraclePrivateKey: ORACLE_PK,
+      selfAuth: fakeSelfAuthVerifyFail,
+    });
+    const res = await request(app).get("/v1/permit");
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("self_verification_failed");
   });
 
   it("issues ALLOW permit on free human quota", async () => {
