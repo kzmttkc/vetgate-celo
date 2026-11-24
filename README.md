@@ -7,12 +7,12 @@
 | Live VetGate HTTP (Vercel) | https://vetgate-celo-orcin.vercel.app |
 | Network | Celo mainnet `42220` (test harness `11142220` in [chain.ts](src/chain.ts)) |
 | PayGuard | `0xde00a2f23792e3cadbf0088a1b93276748a5666c` ([MAINNET_RUN.md](MAINNET_RUN.md)) |
-| Session grant (step 3) | [0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549](https://celoscan.io/tx/0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549) |
-| ALLOW payWithPermit (step 4) | [0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731](https://celoscan.io/tx/0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731) |
-| BLOCK revert (step 5) | [0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e](https://celoscan.io/tx/0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e) (status 0, `VerdictNotAllow`) |
-| revokeSession (step 6) | [0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7](https://celoscan.io/tx/0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7) |
+| Session grant (step 3) | [0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549](https://celoscan.io/tx/0x3c5589e853ca01191373d325c22479602fe90cefb7ed4addde25a0f5ef991549) (`2026-11-23T11:36:50.645Z`) |
+| ALLOW payWithPermit (step 4) | [0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731](https://celoscan.io/tx/0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731) (`2026-11-23T11:43:11.537Z`) |
+| revokeSession (step 6) | [0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7](https://celoscan.io/tx/0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7) (`2026-11-23T11:43:23.431Z`, **before** step 5 BLOCK) |
+| BLOCK revert (step 5) | [0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e](https://celoscan.io/tx/0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e) (`2026-11-23T11:49:23.012Z`, direct EOA `0xCDb0…9941`, status 0, `VerdictNotAllow`) |
 | Oracle / Self agent 194 / ERC-8004 #9907 | `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435` |
-| Altana buyer admin (nonce 0) | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` |
+| Altana buyer admin | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` |
 | Self agent registry | https://agent-api.self.xyz/api/agent/info/42220/194 |
 | ERC-8004 agent | https://8004scan.io/9907 |
 | ERC-8021 attribution | `celo_56284feb7672` |
@@ -21,7 +21,7 @@
 
 ```bash
 forge test --summary && npm test && npm run check-no-keys
-VETGATE_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93276748a5666c \
+VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93276748a5666c \
   npx tsx scripts/mainnet-run.ts --step 5 --dry
 ```
 
@@ -35,6 +35,8 @@ VETGATE_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088a1b93
 | `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, and vet402 fields when ALLOW |
 
 ### Self-signed permit demo (read-only HTTP)
+
+Requires `VETGATE_ORACLE_SIGNER_PK` or a local `.secrets/mainnet-admin.key` (oracle / Self agent 194).
 
 ```bash
 VETGATE_CELO_NETWORK=mainnet npx tsx scripts/self-permit-demo.ts
@@ -66,15 +68,17 @@ After the daily free human quota, the same call may return HTTP `402` with `x402
 
 ### One-shot x402 buyer (default dry)
 
+Default dry needs no key: it prints HTTP `402` `accepts[]`, the selected Celo mainnet exact offer, and an unsigned EIP-3009 template (`eip3009SignPreview`; payer defaults to the operator address unless `VETGATE_BUY_ONCE_PAYER` is set). Add `--with-signed-payload` (or run live) to emit `paymentPayloadV2`; those paths need `VETGATE_ORACLE_SIGNER_PK` or `.secrets/mainnet-admin.key`.
+
 ```bash
 VETGATE_CELO_NETWORK=mainnet npx tsx scripts/buy-once.ts
 ```
 
-Prints HTTP `402` `accepts[]`, the selected Celo mainnet exact offer, and an EIP-3009 signing preview. Live payment requires `--i-understand-mainnet` and records `buy_purchase` in [MAINNET_RUN.md](MAINNET_RUN.md).
+Live payment requires `--i-understand-mainnet` and records `buy_purchase` in [MAINNET_RUN.md](MAINNET_RUN.md).
 
 Mainnet scripts require `--i-understand-mainnet` for live broadcast. See [MAINNET_RUN.md](MAINNET_RUN.md) for the full tx table.
 
-The Altana session demo is mainnet steps 3 to 6. The daily loop (`scripts/daily.ts`, step 7) pays 0.01 USDC from the operator wallet after a public vet402 ALLOW check and a locally minted oracle permit (no Altana session or VetGate HTTP). Daily on-chain traffic is intentional operator use, not buyer-session automation.
+The Altana session demo is mainnet steps **3**, **4**, and **6** (grant, ALLOW `payWithPermit`, `revokeSession`). Step **5** is a direct EOA `0xCDb0…9941` `payWithPermit` BLOCK revert (`VerdictNotAllow`), not an Altana session `execute`. `revokeSession` (step 6) mined at `2026-11-23T11:43:23.431Z`, before the BLOCK tx at `2026-11-23T11:49:23.012Z`. The daily loop (`scripts/daily.ts`, step 7) pays 0.01 USDC from the operator wallet after a public vet402 ALLOW check and a locally minted oracle permit (no Altana session or VetGate HTTP). Daily on-chain traffic is intentional operator use, not buyer-session automation.
 
 ## Accounting (operator vs independent)
 
@@ -92,7 +96,7 @@ The operator wallet mints permits and deploys PayGuard. The buyer admin wallet i
 |---|---|
 | PayGuard enforces ALLOW permits | [VetGatePayGuard.sol](contracts/VetGatePayGuard.sol#L97-L100) |
 | Self sybilLimit(0) on `/v1/permit` | [app.ts](src/app.ts#L95-L103) |
-| Daily human quota | [daily-quota.ts](src/daily-quota.ts), [app.ts](src/app.ts#L209-L210) |
+| Daily human quota | In-memory per instance; resets on cold start, no cross-region sync ([daily-quota.ts](src/daily-quota.ts), [app.ts](src/app.ts#L209-L210)) |
 | x402 facilitator wiring | [chain.ts](src/chain.ts#L15-L16), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
 | ERC-8021 on relay + calls | [attributed-altana-client.ts](src/attributed-altana-client.ts), [attribution.ts](src/attribution.ts) |
 | Mainnet step runner | [mainnet-executor.ts](src/mainnet-executor.ts), [scripts/mainnet-run.ts](scripts/mainnet-run.ts) |
@@ -109,7 +113,7 @@ The Express app is bundled to `api/index.mjs` at build time from [src/vercel-api
 
 | Variable | Example / note |
 |---|---|
-| `VETGATE_CELO_NETWORK` | `mainnet` |
+| `VETGATE_CELO_NETWORK` | `mainnet` (scripts fall back to `VETGATE_NETWORK` when unset) |
 | `VETGATE_PAY_GUARD_ADDRESS` | `0xde00a2f23792e3cadbf0088a1b93276748a5666c` |
 | `VETGATE_ORACLE_SIGNER_PK` | Oracle private key (never commit) |
 | `VETGATE_PAYTO_ADDRESS` | x402 payTo for paid tier |
