@@ -543,9 +543,6 @@ export async function runMainnetStep(
     const seller = await resolveMainnetSellerPayTo();
     if (seller.source !== "vet402") {
       console.log(`daily_small_use: skipped: not ALLOW utc=${day}`);
-      if (!opts.dry) {
-        appendTxRow(stepId, "0xskipped", `skipped: not ALLOW utc=${day}`);
-      }
       return;
     }
     assertSellerNotAdmin(seller.payTo);
