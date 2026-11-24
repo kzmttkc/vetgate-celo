@@ -55,6 +55,7 @@ import { mintVetGatePermit } from "./permit.js";
 import type { OraclePermitFields } from "./agent-buyer.js";
 import {
   appendTxRow,
+  TX_SKIP_RECORDED_MARKER,
   assertStepNotDone,
   isDailyPaymentDoneUtc,
   isStepDone,
@@ -401,7 +402,11 @@ export async function runMainnetStep(
     if (await erc8004SkipRegister(oracleAccount.address)) {
       console.log(`skip: already ${MAINNET_EXISTING_ERC8004_AGENT_ID}`);
       if (!isStepDone(stepId)) {
-        appendTxRow(stepId, "0xskipped", `skip: already ${MAINNET_EXISTING_ERC8004_AGENT_ID}`);
+        appendTxRow(
+          stepId,
+          TX_SKIP_RECORDED_MARKER,
+          `skip: already ${MAINNET_EXISTING_ERC8004_AGENT_ID}`,
+        );
       }
       return;
     }

@@ -12,6 +12,12 @@ export const MAINNET_EXISTING_ERC8004_AGENT_ID = 9907n;
 
 const PLACEHOLDER_HASH = /^(—|_—_|0x0|0xrevert)$/i;
 
+/** Logged when a runbook step is intentionally skipped (no on-chain tx). */
+export const TX_SKIP_RECORDED_MARKER = "skipped";
+
+const TABLE_APPEND_SENTENCE =
+  "Each successful `scripts/mainnet-run.ts` run appends a row to this table.";
+
 function rowForStep(stepId: MainnetRunStepId, contents: string): string[] {
   return contents
     .split("\n")
@@ -47,9 +53,9 @@ export function isStepDone(stepId: MainnetRunStepId, contents = readRunLogConten
     if (/superseded/i.test(row)) continue;
     const hashMatch = row.match(/\|\s*[^|]+\s*\|\s*`([^`]+)`/);
     const hash = hashMatch?.[1]?.trim() ?? "";
-    if (hash && !PLACEHOLDER_HASH.test(hash)) {
-      return true;
-    }
+    if (!hash) continue;
+    if (hash === TX_SKIP_RECORDED_MARKER) return true;
+    if (!PLACEHOLDER_HASH.test(hash)) return true;
   }
   return false;
 }
@@ -82,6 +88,29 @@ export function upsertRunMetadata(key: string, value: string): void {
   writeFileSync(MAINNET_RUN_LOG_PATH, contents);
 }
 
+/** Insert a new table row after the last `|` line in the tx table, before the append sentence or run state. */
+export function insertTxRowLine(contents: string, line: string): string {
+  const sentenceIdx = contents.indexOf(TABLE_APPEND_SENTENCE);
+  const splitAt =
+    sentenceIdx >= 0
+      ? sentenceIdx
+      : contents.includes("\n## Run state\n")
+        ? contents.indexOf("\n## Run state\n")
+        : contents.length;
+  const before = contents.slice(0, splitAt);
+  const after = contents.slice(splitAt);
+  const lines = before.split("\n");
+  let lastPipeLine = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trimStart().startsWith("|")) lastPipeLine = i;
+  }
+  if (lastPipeLine < 0) {
+    return `${before.trimEnd()}\n${line}\n${after}`;
+  }
+  lines.splice(lastPipeLine + 1, 0, line);
+  return `${lines.join("\n")}${after}`;
+}
+
 export function appendTxRow(
   stepId: MainnetRunStepId,
   hash: string,
@@ -96,12 +125,7 @@ export function appendTxRow(
     );
     return;
   }
-  const runStateMarker = "\n## Run state\n";
-  if (contents.includes(runStateMarker)) {
-    contents = contents.replace(runStateMarker, `\n${line}\n${runStateMarker}`);
-  } else {
-    contents = `${contents.trimEnd()}\n${line}\n`;
-  }
+  contents = insertTxRowLine(contents, line);
   writeFileSync(MAINNET_RUN_LOG_PATH, contents);
 }
 

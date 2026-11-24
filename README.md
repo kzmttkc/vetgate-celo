@@ -96,7 +96,7 @@ The operator wallet mints permits and deploys PayGuard. The buyer admin wallet i
 |---|---|
 | PayGuard enforces ALLOW permits | [VetGatePayGuard.sol](contracts/VetGatePayGuard.sol#L97-L100) |
 | Self sybilLimit(0) on `/v1/permit` | [app.ts](src/app.ts#L95-L103) |
-| Daily human quota | In-memory per instance; resets on cold start, no cross-region sync ([daily-quota.ts](src/daily-quota.ts), [app.ts](src/app.ts#L209-L210)) |
+| Daily human quota | In-memory per instance; resets on cold start, no cross-region sync ([daily-quota.ts](src/daily-quota.ts), [app.ts](src/app.ts#L214-L217)) |
 | x402 facilitator wiring | [chain.ts](src/chain.ts#L15-L16), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
 | ERC-8021 on relay + calls | [attributed-altana-client.ts](src/attributed-altana-client.ts), [attribution.ts](src/attribution.ts) |
 | Mainnet step runner | [mainnet-executor.ts](src/mainnet-executor.ts), [scripts/mainnet-run.ts](scripts/mainnet-run.ts) |
