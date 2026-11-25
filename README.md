@@ -32,7 +32,7 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | `GET /health` | `{"ok":true,"network":"mainnet","chainId":42220}` |
 | `GET /v1/stats` | `{"network":"eip155:42220","stats":{...}}` (no Self headers required) |
 | `GET /v1/permit?...` without Self headers | HTTP `401`, JSON error `self_agent_required` |
-| `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, and vet402 fields when ALLOW |
+| `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, `freeQuota` (free tier), and vet402 fields when ALLOW |
 
 ### Self-signed permit demo (read-only HTTP)
 
@@ -50,6 +50,11 @@ Expected JSON shape on stdout (single object):
   "body": {
     "tier": "free",
     "verdict": "ALLOW",
+    "freeQuota": {
+      "key": "0x…",
+      "used": false,
+      "scope": "per human per UTC day, shared across all agents of that human"
+    },
     "permit": {
       "payTo": "0x…",
       "token": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
@@ -64,7 +69,7 @@ Expected JSON shape on stdout (single object):
 }
 ```
 
-After the daily free human quota, the same call may return HTTP `402` with `x402_payment_required` instead of a permit.
+Each human (Self nullifier) gets one free permit per UTC day across all of their agents. The free permit `nonce` is deterministic (`vetgate-free-v1` + nullifier + UTC day) and shared with PayGuard’s `usedNonces` on Celo mainnet. After that nonce is used on-chain—or when the oracle cannot confirm it is free—the same call may return HTTP `402` with `x402_payment_required` and `freeQuota.used: true` (no nullifier in the JSON).
 
 ### One-shot x402 buyer (default dry)
 
@@ -95,8 +100,8 @@ The operator wallet mints permits and deploys PayGuard. The buyer admin wallet i
 | Requirement | Implementation |
 |---|---|
 | PayGuard enforces ALLOW permits | [VetGatePayGuard.sol](contracts/VetGatePayGuard.sol#L97-L100) |
-| Self sybilLimit(0) on `/v1/permit` | [app.ts](src/app.ts#L95-L103) |
-| Daily human quota | In-memory per instance; resets on cold start, no cross-region sync ([daily-quota.ts](src/daily-quota.ts), [app.ts](src/app.ts#L214-L217)) |
+| Self sybilLimit(0) on `/v1/permit` | [app.ts](src/app.ts#L122-L130) |
+| Daily human quota | Deterministic free nonce + PayGuard `usedNonces` RPC ([daily-quota.ts](src/daily-quota.ts), [chain.ts](src/chain.ts), [app.ts](src/app.ts#L243-L300)); in-memory cache only within one instance |
 | x402 facilitator wiring | [chain.ts](src/chain.ts#L15-L16), [oracle-bootstrap.ts](src/oracle-bootstrap.ts) |
 | ERC-8021 on relay + calls | [attributed-altana-client.ts](src/attributed-altana-client.ts), [attribution.ts](src/attribution.ts) |
 | Mainnet step runner | [mainnet-executor.ts](src/mainnet-executor.ts), [scripts/mainnet-run.ts](scripts/mainnet-run.ts) |

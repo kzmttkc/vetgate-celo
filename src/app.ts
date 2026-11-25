@@ -6,8 +6,12 @@ import { HTTPFacilitatorClient, type RoutesConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
-import { resolveCeloRuntime } from "./chain.js";
-import { DailyHumanQuota } from "./daily-quota.js";
+import { readPayGuardNonceUsed, resolveCeloRuntime } from "./chain.js";
+import {
+  DailyHumanQuota,
+  deriveFreePermitNonce,
+  FREE_QUOTA_SCOPE,
+} from "./daily-quota.js";
 import { mintVetGatePermit } from "./permit.js";
 import { parseTeamWallets, StatsStore } from "./stats.js";
 import { fetchVet402Check, isVet402Allow } from "./vet402.js";
@@ -25,6 +29,17 @@ export type CreateAppConfig = {
   dailyQuota?: DailyHumanQuota;
   stats?: StatsStore;
   vet402Fetch?: typeof fetch;
+  /** Test override for PayGuard.usedNonces reads (production uses on-chain RPC). */
+  readPayGuardNonceUsed?: (
+    payGuard: `0x${string}`,
+    nonce: `0x${string}`,
+  ) => Promise<boolean>;
+};
+
+export type FreeQuotaInfo = {
+  key: `0x${string}`;
+  used: boolean;
+  scope: typeof FREE_QUOTA_SCOPE;
 };
 
 export type PermitQuery = {
@@ -49,6 +64,7 @@ async function buildPermitResponse(
   cfg: CreateAppConfig,
   query: PermitQuery,
   tier: "free" | "paid",
+  freeNonce?: `0x${string}`,
 ) {
   const fetchImpl = cfg.vet402Fetch ?? fetch;
   const vet402 = await fetchVet402Check(query.sellerUrl, fetchImpl);
@@ -73,16 +89,26 @@ async function buildPermitResponse(
     maxAmount: BigInt(query.maxAmount),
     payGuardAddress: cfg.payGuardAddress,
     oracleAccount,
+    ...(tier === "free" && freeNonce ? { nonce: freeNonce } : {}),
   });
+
+  const body: Record<string, unknown> = {
+    tier,
+    verdict: "ALLOW" as const,
+    vet402,
+    permit,
+  };
+  if (tier === "free" && freeNonce) {
+    body.freeQuota = {
+      key: freeNonce,
+      used: false,
+      scope: FREE_QUOTA_SCOPE,
+    } satisfies FreeQuotaInfo;
+  }
 
   return {
     status: 200 as const,
-    body: {
-      tier,
-      verdict: "ALLOW" as const,
-      vet402,
-      permit,
-    },
+    body,
   };
 }
 
@@ -202,13 +228,16 @@ export function createApp(cfg: CreateAppConfig): Express {
     });
   });
 
-  const synthetic402 = (res: express.Response) =>
+  const readNonceUsed = cfg.readPayGuardNonceUsed ?? readPayGuardNonceUsed;
+
+  const synthetic402 = (res: express.Response, freeQuota?: FreeQuotaInfo) =>
     res.status(402).json({
       error: "x402_payment_required",
       message:
         `Daily free human quota exhausted. Pay $0.01 USDC on Celo ${celo.network} via x402 to continue.`,
       x402: routes["GET /v1/permit" as keyof RoutesConfig],
       network: celo.caip2,
+      ...(freeQuota ? { freeQuota } : {}),
     });
 
   app.get("/v1/permit", async (req, res, next) => {
@@ -225,19 +254,50 @@ export function createApp(cfg: CreateAppConfig): Express {
     (req as express.Request & { vetgateQuery?: PermitQuery }).vetgateQuery = query;
     (req as express.Request & { vetgateTier?: "free" | "paid" }).vetgateTier = "paid";
 
-    if (dailyQuota.hasFreeSlot(nullifier)) {
+    const freeNonce = deriveFreePermitNonce(nullifier);
+
+    if (!dailyQuota.hasFreeSlot(nullifier)) {
+      if (!cfg.enableX402 || !cfg.x402ApiKey) {
+        return synthetic402(res, {
+          key: freeNonce,
+          used: true,
+          scope: FREE_QUOTA_SCOPE,
+        });
+      }
+      return next();
+    }
+
+    let onChainUsed = false;
+    try {
+      onChainUsed = await readNonceUsed(cfg.payGuardAddress, freeNonce);
+    } catch {
+      if (!cfg.enableX402 || !cfg.x402ApiKey) {
+        return synthetic402(res, {
+          key: freeNonce,
+          used: true,
+          scope: FREE_QUOTA_SCOPE,
+        });
+      }
+      return next();
+    }
+
+    if (onChainUsed) {
       dailyQuota.consumeFreeSlot(nullifier);
-      stats.record(agent.address, "free");
-      (req as express.Request & { vetgateTier?: "free" | "paid" }).vetgateTier = "free";
-      const payload = await buildPermitResponse(cfg, query, "free");
-      return res.status(payload.status).json(payload.body);
+      if (!cfg.enableX402 || !cfg.x402ApiKey) {
+        return synthetic402(res, {
+          key: freeNonce,
+          used: true,
+          scope: FREE_QUOTA_SCOPE,
+        });
+      }
+      return next();
     }
 
-    if (!cfg.enableX402 || !cfg.x402ApiKey) {
-      return synthetic402(res);
-    }
-
-    return next();
+    dailyQuota.consumeFreeSlot(nullifier);
+    stats.record(agent.address, "free");
+    (req as express.Request & { vetgateTier?: "free" | "paid" }).vetgateTier = "free";
+    const payload = await buildPermitResponse(cfg, query, "free", freeNonce);
+    return res.status(payload.status).json(payload.body);
   });
 
   if (cfg.enableX402 && cfg.x402ApiKey) {

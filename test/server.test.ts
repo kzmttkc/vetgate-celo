@@ -89,6 +89,7 @@ describe("VetGate server", () => {
       dailyQuota: quota,
       stats,
       vet402Fetch: fetchMock as unknown as typeof fetch,
+      readPayGuardNonceUsed: async () => false,
     });
 
     const res = await request(app)
@@ -122,6 +123,7 @@ describe("VetGate server", () => {
       oraclePrivateKey: ORACLE_PK,
       selfAuth: mockSelfAgent("0x4444444444444444444444444444444444444444"),
       vet402Fetch: fetchMock as unknown as typeof fetch,
+      readPayGuardNonceUsed: async () => false,
     });
 
     const res = await request(app).get("/v1/permit").query({
@@ -150,6 +152,7 @@ describe("VetGate server", () => {
       dailyQuota: quota,
       vet402Fetch: fetchMock as unknown as typeof fetch,
       enableX402: false,
+      readPayGuardNonceUsed: async () => false,
     });
 
     const res = await request(app).get("/v1/permit").query({
@@ -159,6 +162,7 @@ describe("VetGate server", () => {
     });
 
     expect(res.status).toBe(402);
+    expect(res.body.freeQuota?.used).toBe(true);
     expect(res.body.error).toBe("x402_payment_required");
     expect(res.body.network).toBe("eip155:11142220");
   });

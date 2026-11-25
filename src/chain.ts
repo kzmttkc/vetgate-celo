@@ -1,3 +1,5 @@
+import { createPublicClient, http } from "viem";
+
 /** Celo network constants. Default runtime is Sepolia testnet (tests / CI). */
 
 export const CELO_SEPOLIA_CHAIN_ID = 11142220 as const;
@@ -94,4 +96,31 @@ export function resolveCeloRuntime(): CeloRuntime {
 
 export function resolveAttributionCode(): string {
   return process.env.CELO_ATTRIBUTION_TAG ?? PLACEHOLDER_ATTRIBUTION_TAG;
+}
+
+const PAY_GUARD_USED_NONCES_ABI = [
+  {
+    type: "function",
+    name: "usedNonces",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
+
+/** Read PayGuard.usedNonces on the active Celo RPC (CELO_RPC_URL or default for network). */
+export async function readPayGuardNonceUsed(
+  payGuardAddress: `0x${string}`,
+  nonce: `0x${string}`,
+): Promise<boolean> {
+  const runtime = resolveCeloRuntime();
+  const client = createPublicClient({
+    transport: http(runtime.rpc),
+  });
+  return client.readContract({
+    address: payGuardAddress,
+    abi: PAY_GUARD_USED_NONCES_ABI,
+    functionName: "usedNonces",
+    args: [nonce],
+  });
 }

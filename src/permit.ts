@@ -23,6 +23,8 @@ export type MintPermitParams = {
   oracleAccount: Account;
   token?: `0x${string}`;
   ttlSeconds?: number;
+  /** When set (free tier), uses this nonce instead of a random bytes32. */
+  nonce?: `0x${string}`;
 };
 
 export async function mintVetGatePermit(params: MintPermitParams): Promise<VetGatePermitPayload> {
@@ -30,7 +32,8 @@ export async function mintVetGatePermit(params: MintPermitParams): Promise<VetGa
   const expiresAt = BigInt(
     Math.floor(Date.now() / 1000) + (params.ttlSeconds ?? 300),
   );
-  const nonce = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
+  const nonce =
+    params.nonce ?? (`0x${randomBytes(32).toString("hex")}` as `0x${string}`);
   const token = params.token ?? runtime.usdc;
 
   if (!params.oracleAccount.signTypedData) {
