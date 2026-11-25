@@ -22,3 +22,5 @@ api/index.mjs
 *.log
 .vercel
 .env*
+.self/
+*.key
