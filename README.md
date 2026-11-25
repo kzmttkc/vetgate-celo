@@ -71,6 +71,10 @@ Expected JSON shape on stdout (single object):
 
 Each human (Self nullifier) gets one free permit per UTC day across all of their agents. The free permit `nonce` is deterministic (`vetgate-free-v1` + nullifier + UTC day) and shared with PayGuard’s `usedNonces` on Celo mainnet. After that nonce is used on-chain—or when the oracle cannot confirm it is free—the same call may return HTTP `402` with `x402_payment_required` and `freeQuota.used: true` (no nullifier in the JSON).
 
+### Same human, two agents
+
+The oracle verifies Self agents with `.sybilLimit(0)` and counts the free tier per human (nullifier), not per agent. Two agents registered by the same person get the same free `nonce`; once one of them uses it on-chain, the other gets HTTP `402`. This is covered in [test/free-quota-chain.test.ts](test/free-quota-chain.test.ts) (`derives the same free nonce for the same nullifier across different agent IDs`, `returns 402 when PayGuard.usedNonces is true (second agent, fresh instance cache)`). On mainnet, agent 194 returned `200` free, then `402` with the same key on the second call.
+
 ### One-shot x402 buyer (default dry)
 
 Default dry needs no key: it prints HTTP `402` `accepts[]`, the selected Celo mainnet exact offer, and an unsigned EIP-3009 template (`eip3009SignPreview`; payer defaults to the operator address unless `VETGATE_BUY_ONCE_PAYER` is set). Add `--with-signed-payload` (or run live) to emit `paymentPayloadV2`; those paths need `VETGATE_ORACLE_SIGNER_PK` or `.secrets/mainnet-admin.key`.
@@ -126,7 +130,7 @@ The Express app is bundled to `api/index.mjs` at build time from [src/vercel-api
 | `X402_API_KEY` | Optional, enables paid quota settlement |
 | `CELO_FACILITATOR_URL` | Optional, defaults to mainnet facilitator when network is mainnet |
 
-**Daily quota on Vercel:** [DailyHumanQuota](src/daily-quota.ts) is an in-memory `Map` per serverless instance. Free-tier counts reset when a new instance cold-starts and do not sync across regions. This matches the current code path with no local disk.
+**Daily quota on Vercel:** the source of truth is PayGuard `usedNonces` on Celo mainnet, read over RPC for every free permit. [DailyHumanQuota](src/daily-quota.ts) is only an in-memory cache inside one serverless instance; a cold start or another region re-reads the chain, so the quota does not reset.
 
 Local dev: `npm start` (reads `.secrets/` when `VETGATE_ORACLE_SIGNER_PK` is unset).
 
