@@ -75,6 +75,20 @@ Each human (Self nullifier) gets one free permit per UTC day across all of their
 
 The oracle verifies Self agents with `.sybilLimit(0)` and counts the free tier per human (nullifier), not per agent. Two agents registered by the same person get the same free `nonce`; once one of them uses it on-chain, the other gets HTTP `402`. This is covered in [test/free-quota-chain.test.ts](test/free-quota-chain.test.ts) (`derives the same free nonce for the same nullifier across different agent IDs`, `returns 402 when PayGuard.usedNonces is true (second agent, fresh instance cache)`). On mainnet, agent 194 returned `200` free, then `402` with the same key on the second call.
 
+### Two agents, one person (Celo Sepolia mock passport)
+
+**Testnet only** — demonstrates the hackathon “verified agent + second agent turned away, shared per-person limit” using two Self agents on **Celo Sepolia** (mock passport, same human / nullifier: `agent-a`, `agent-b`). This is **not** mainnet Self agent 194; mainnet production behavior is described in the sections above.
+
+Export keys with the Self agent CLI (`register` + `export --out-key`) into `.self/agent-a.key` and `.self/agent-b.key`. The script starts VetGate locally (`VETGATE_CELO_NETWORK=testnet`), verifies agents on Sepolia, and reads **mainnet** PayGuard `usedNonces` over RPC (read-only) at `0xde00a2f23792e3cadbf0088a1b93276748a5666c` without pointing `CELO_RPC_URL` at mainnet (that would mix RPC with testnet Self signing). Also needs `.secrets/testnet.key` (or `VETGATE_ORACLE_SIGNER_PK`) for the oracle.
+
+```bash
+VETGATE_CELO_NETWORK=testnet npx tsx scripts/two-agent-demo.ts
+# optional: --agent-a-key path --agent-b-key path
+# or VETGATE_AGENT_A_KEY_FILE / VETGATE_AGENT_B_KEY_FILE
+```
+
+Expected stdout (one line per step, for demo video): `(1)` HTTP `401` without signature; `(2)` `agent-a` HTTP `200` `tier=free`; `(3)` `agent-b` HTTP `402` `x402_payment_required` with the same `freeQuota.key` as step 2. Missing key files → exit code `2` and a single guidance line.
+
 ### One-shot x402 buyer (default dry)
 
 Default dry needs no key: it prints HTTP `402` `accepts[]`, the selected Celo mainnet exact offer, and an unsigned EIP-3009 template (`eip3009SignPreview`; payer defaults to the operator address unless `VETGATE_BUY_ONCE_PAYER` is set). Add `--with-signed-payload` (or run live) to emit `paymentPayloadV2`; those paths need `VETGATE_ORACLE_SIGNER_PK` or `.secrets/mainnet-admin.key`.
