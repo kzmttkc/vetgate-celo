@@ -77,10 +77,10 @@ export function buildRegisterErc8004Calldata(): Hex {
   const call = buildErc8004RegisterCall(CELO_MAINNET_CHAIN_ID, MAINNET_AGENT_URI, [
     {
       metadataKey: "x402Support",
-      metadataValue: "0x" + Buffer.from("true", "utf8").toString("hex"),
+      metadataValue: ("0x" + Buffer.from("true", "utf8").toString("hex")) as `0x${string}`,
     },
   ]);
-  return appendAttributionSuffix(call.data);
+  return appendAttributionSuffix(call.data as Hex);
 }
 
 export function buildPayWithPermitCalldata(params: {

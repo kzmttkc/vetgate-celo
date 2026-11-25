@@ -1,4 +1,4 @@
-import { formatQuoteLine } from "@altananetwork/sdk";
+import { CELO, formatQuoteLine } from "@altananetwork/sdk";
 
 /** Print relay quote status and per-leg costs for `--dry` mainnet steps. */
 export function printRelayQuote(label: string, quote: unknown): void {
@@ -42,7 +42,7 @@ export function printRelayQuote(label: string, quote: unknown): void {
   if (singleLine && singleLine.length > 0) {
     for (const line of singleLine) {
       try {
-        parts.push(formatQuoteLine(line));
+        parts.push(formatQuoteLine(line, CELO));
       } catch {
         parts.push(JSON.stringify(line, (_, v) => (typeof v === "bigint" ? v.toString() : v)));
       }

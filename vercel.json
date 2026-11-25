@@ -1,8 +1,10 @@
 {
+  "framework": null,
   "buildCommand": "node scripts/build-vercel-api.mjs",
+  "outputDirectory": "public",
   "functions": {
     "api/index.mjs": {
-      "excludeFiles": "{node_modules/**,src/**,test/**,scripts/**,lib/**,contracts/**}"
+      "excludeFiles": "{node_modules/**,src/**,test/**,scripts/**,lib/**,contracts/**,.secrets/**}"
     }
   },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }]

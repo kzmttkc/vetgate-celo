@@ -111,8 +111,13 @@ export function insertTxRowLine(contents: string, line: string): string {
   return `${lines.join("\n")}${after}`;
 }
 
+export type MainnetRunLogStepId =
+  | MainnetRunStepId
+  | "usdc_approve_pay_guard"
+  | "altana_wallet_and_session_fund";
+
 export function appendTxRow(
-  stepId: MainnetRunStepId,
+  stepId: MainnetRunLogStepId,
   hash: string,
   note: string,
 ): void {

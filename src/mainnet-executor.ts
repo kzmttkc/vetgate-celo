@@ -417,12 +417,16 @@ export async function runMainnetStep(
     const call = buildErc8004RegisterCall(CELO_MAINNET_CHAIN_ID, MAINNET_AGENT_URI, [
       {
         metadataKey: "x402Support",
-        metadataValue: "0x" + Buffer.from("true", "utf8").toString("hex"),
+        metadataValue: ("0x" + Buffer.from("true", "utf8").toString("hex")) as `0x${string}`,
       },
     ]);
-    const tagged = appendAttributionSuffix(call.data);
+    const tagged = appendAttributionSuffix(call.data as Hex);
     if (opts.dry) {
-      printDryCall("register_erc8004", { wallet: wallet.address, to: call.to, data: tagged });
+      printDryCall("register_erc8004", {
+        wallet: wallet.address,
+        to: call.to as `0x${string}`,
+        data: tagged,
+      });
       return;
     }
     const result = await attributedExecute(client, {
@@ -509,7 +513,11 @@ export async function runMainnetStep(
         to: CELO_MAINNET_USDC,
         data: transferData as Hex,
       });
-      appendTxRow(`${stepId}_fund`, fundHash, `admin USDC fund ${fundUnits} units → buyer wallet`);
+      appendTxRow(
+        "altana_wallet_and_session_fund",
+        fundHash,
+        `admin USDC fund ${fundUnits} units → buyer wallet`,
+      );
     }
 
     const grant = await attributedGrantSession(client, {
@@ -878,6 +886,10 @@ export async function runMainnetStep(
       console.log(`post_revoke simulate refused: ${err instanceof Error ? err.message : err}`);
     }
     return;
+  }
+
+  if (stepId === "buy_purchase") {
+    throw new Error("buy_purchase is executed via npm run buy-once, not runMainnetStep");
   }
 
   throw new Error(`Unhandled step ${stepId satisfies never}`);

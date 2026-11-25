@@ -10,6 +10,7 @@ import {
   isCeloMainnetNetwork,
   parseUsdcUnits,
   selectCeloMainnetAccept,
+  type X402V1PaymentRequired,
 } from "../src/x402-buy-once.js";
 
 const SAMPLE_402 = {
@@ -31,7 +32,7 @@ const SAMPLE_402 = {
       extra: { name: "USDC", version: "2" },
     },
   ],
-} as const;
+} satisfies X402V1PaymentRequired;
 
 describe("x402 buy-once guards", () => {
   it("uses POST JSON for usebuy social profile sellers", () => {

@@ -45,9 +45,12 @@ describe("ERC-8021 attribution suffix on every write path", () => {
     const tagged = buildRegisterErc8004Calldata();
     expect(calldataIncludesAttribution(tagged, code)).toBe(true);
     const bare = buildErc8004RegisterCall(CELO_MAINNET_CHAIN_ID, "https://vetgate-celo.local/agent-registration.json", [
-      { metadataKey: "x402Support", metadataValue: "0x" + Buffer.from("true", "utf8").toString("hex") },
+      {
+        metadataKey: "x402Support",
+        metadataValue: ("0x" + Buffer.from("true", "utf8").toString("hex")) as `0x${string}`,
+      },
     ]);
-    expect(tagged).toEqual(appendAttributionSuffix(bare.data, code));
+    expect(tagged).toEqual(appendAttributionSuffix(bare.data as `0x${string}`, code));
   });
 
   it("x402 buyer path when client allows data suffix", () => {

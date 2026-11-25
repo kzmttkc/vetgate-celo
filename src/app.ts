@@ -1,6 +1,6 @@
 import express, { type Express, type RequestHandler } from "express";
 import { privateKeyToAccount } from "viem/accounts";
-import { SelfAgentVerifier } from "@selfxyz/agent-sdk";
+import { HEADERS, SelfAgentVerifier } from "@selfxyz/agent-sdk";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient, type RoutesConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -92,15 +92,16 @@ export function createApp(cfg: CreateAppConfig): Express {
   const dailyQuota = cfg.dailyQuota ?? new DailyHumanQuota();
   const stats = cfg.stats ?? new StatsStore(teamWallets);
 
-  const selfAuth =
+  const useDefaultSelfAuth = !cfg.selfAuth;
+  const selfAuth: RequestHandler =
     cfg.selfAuth ??
-    SelfAgentVerifier.create()
+    (SelfAgentVerifier.create()
       .network(celo.selfNetwork)
       .sybilLimit(0)
       .requireAge(18)
       .requireOFAC()
       .build()
-      .auth();
+      .auth() as RequestHandler);
 
   const routes: RoutesConfig = {
     "GET /v1/permit": {
@@ -166,6 +167,19 @@ export function createApp(cfg: CreateAppConfig): Express {
 
   app.use("/v1", (req, res, next) => {
     if (req.path === "/stats") return next();
+    const signature = req.headers[HEADERS.SIGNATURE];
+    const timestamp = req.headers[HEADERS.TIMESTAMP];
+    if (
+      useDefaultSelfAuth &&
+      (typeof signature !== "string" || typeof timestamp !== "string")
+    ) {
+      res.status(401).json({
+        error: "self_agent_required",
+        message:
+          "Missing or invalid Self Agent ID request signature (x-self-agent-signature, x-self-agent-timestamp).",
+      });
+      return;
+    }
     return selfAuth(req, res, (err) => {
       if (err) {
         res.status(403).json({

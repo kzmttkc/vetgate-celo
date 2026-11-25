@@ -1,4 +1,8 @@
 import * as esbuild from "esbuild";
+import { mkdirSync, writeFileSync } from "node:fs";
+
+mkdirSync("public", { recursive: true });
+writeFileSync("public/.gitkeep", "");
 
 await esbuild.build({
   entryPoints: ["src/vercel-api.ts"],

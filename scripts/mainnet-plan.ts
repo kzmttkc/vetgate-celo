@@ -72,7 +72,10 @@ async function main(): Promise<void> {
   console.log(`On-chain now:    ${formatEther(adminBal)} CELO, ${usdcBal} USDC (6dp units)\n`);
 
   for (const step of steps) {
-    const gas = await estimateGas(client, step);
+    const gas = await estimateGas(
+      client as Parameters<typeof estimateGas>[0],
+      step,
+    );
     if (gas !== undefined) step.gasEstimateWei = gas;
     if (gas) totalGas += gas;
     totalUsdcPlan += step.usdcDelta;

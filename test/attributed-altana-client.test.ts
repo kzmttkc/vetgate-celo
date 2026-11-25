@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { CELO, createClient } from "@altananetwork/sdk";
+import { CELO, createClient, signerFromPrivateKey } from "@altananetwork/sdk";
 
 import {
   attributedRevokeSession,
@@ -41,8 +41,8 @@ describe("attributed Altana relay client", () => {
     await expect(
       attributedRevokeSession(client, {
         wallet,
-        signer: { type: "secp256k1", _privateKey: "0x" + "ab".repeat(32), publicKey: "0x" + "11".repeat(64) },
-        session: "0x" + "22".repeat(32),
+        signer: signerFromPrivateKey(("0x" + "ab".repeat(32)) as `0x${string}`),
+        session: ("0x" + "22".repeat(32)) as `0x${string}`,
         chainId: CELO.chainId,
       }),
     ).rejects.toThrow(/dataSuffix/i);
