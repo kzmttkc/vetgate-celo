@@ -1,16 +1,22 @@
 import * as esbuild from "esbuild";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-mkdirSync("public", { recursive: true });
-writeFileSync("public/.gitkeep", "");
+const OUT_ROOT = ".vercel/output";
+const FUNC_DIR = join(OUT_ROOT, "functions", "api.func");
+const STATIC_DIR = join(OUT_ROOT, "static");
+
+rmSync(OUT_ROOT, { recursive: true, force: true });
+mkdirSync(FUNC_DIR, { recursive: true });
+mkdirSync(STATIC_DIR, { recursive: true });
 
 await esbuild.build({
   entryPoints: ["src/vercel-api.ts"],
-  outfile: "api/index.mjs",
+  outfile: join(FUNC_DIR, "index.mjs"),
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node20",
+  target: "node24",
   packages: "bundle",
   banner: {
     js:
@@ -19,3 +25,33 @@ await esbuild.build({
   },
   logLevel: "info",
 });
+
+writeFileSync(
+  join(FUNC_DIR, ".vc-config.json"),
+  `${JSON.stringify(
+    {
+      runtime: "nodejs24.x",
+      handler: "index.mjs",
+      launcherType: "Nodejs",
+      shouldAddHelpers: false,
+      shouldAddSourcemapSupport: false,
+    },
+    null,
+    2,
+  )}\n`,
+);
+
+writeFileSync(
+  join(OUT_ROOT, "config.json"),
+  `${JSON.stringify(
+    {
+      version: 3,
+      routes: [
+        { handle: "filesystem" },
+        { src: "/(.*)", dest: "/api" },
+      ],
+    },
+    null,
+    2,
+  )}\n`,
+);
