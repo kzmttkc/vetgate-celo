@@ -4,6 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { RequestHandler } from "express";
 import { createApp } from "../src/app.js";
 import { DailyHumanQuota } from "../src/daily-quota.js";
+import { OnchainStats } from "../src/onchain-stats.js";
 import { StatsStore } from "../src/stats.js";
 
 const ORACLE_PK = generatePrivateKey();
@@ -177,6 +178,11 @@ describe("VetGate server", () => {
       oraclePrivateKey: ORACLE_PK,
       selfAuth: mockSelfAgent("0xcccccccccccccccccccccccccccccccccccccccc"),
       stats,
+      onchainStats: new OnchainStats({
+        reader: { getBlockNumber: async () => 0n, getGuardedPaymentLogs: async () => [] },
+        teamWallets: new Set(),
+        fromBlock: 0n,
+      }),
     });
 
     const res = await request(app).get("/v1/stats");

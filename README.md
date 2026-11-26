@@ -18,6 +18,7 @@
 | ERC-8021 attribution | `celo_56284feb7672` |
 | x402 facilitator | https://api.x402.celo.org |
 | vet402 seller check | https://vet402.com/api/v1/check?url= |
+| Demo video | https://youtu.be/tpzMnuv0I18 |
 
 ```bash
 forge test --summary && npm test && npm run check-no-keys
@@ -30,7 +31,7 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | Route | Expected |
 |---|---|
 | `GET /health` | `{"ok":true,"network":"mainnet","chainId":42220}` |
-| `GET /v1/stats` | `{"network":"eip155:42220","stats":{...}}` (no Self headers required) |
+| `GET /v1/stats` | `{"network":"eip155:42220","stats":{...},"onchain":{...}}` (no Self headers required). `stats` counts calls since the instance started (resets on redeploy). `onchain` counts PayGuard `GuardedPayment` events on Celo mainnet from deploy block `83529645` to `toBlock`: `payments`, `amount` (raw token units per token), `payers` (distinct buyers), `team` / `independent` split, `fromBlock`, `toBlock`, `asOf` (UTC). Cached 60 s. If the RPC fails it returns `"onchain":{"error":"rpc_unavailable"}`, never zeros. |
 | `GET /v1/permit?...` without Self headers | HTTP `401`, JSON error `self_agent_required` |
 | `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, `freeQuota` (free tier), and vet402 fields when ALLOW |
 

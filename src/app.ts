@@ -6,13 +6,24 @@ import { HTTPFacilitatorClient, type RoutesConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
-import { readPayGuardNonceUsed, resolveCeloRuntime } from "./chain.js";
+import {
+  MAINNET_ADMIN_ADDRESS,
+  MAINNET_ALTANA_ADMIN_ADDRESS,
+  readPayGuardNonceUsed,
+  resolveCeloRuntime,
+} from "./chain.js";
 import {
   DailyHumanQuota,
   deriveFreePermitNonce,
   FREE_QUOTA_SCOPE,
 } from "./daily-quota.js";
 import { mintVetGatePermit } from "./permit.js";
+import {
+  createViemOnchainReader,
+  MAINNET_PAY_GUARD_ADDRESS,
+  OnchainStats,
+  resolveMainnetRpc,
+} from "./onchain-stats.js";
 import { parseTeamWallets, StatsStore } from "./stats.js";
 import { fetchVet402Check, isVet402Allow } from "./vet402.js";
 
@@ -28,6 +39,8 @@ export type CreateAppConfig = {
   selfAuth?: RequestHandler;
   dailyQuota?: DailyHumanQuota;
   stats?: StatsStore;
+  /** Celo mainnet PayGuard event counter for /v1/stats (tests inject a mocked reader). */
+  onchainStats?: OnchainStats;
   vet402Fetch?: typeof fetch;
   /** Test override for PayGuard.usedNonces reads (production uses on-chain RPC). */
   readPayGuardNonceUsed?: (
@@ -117,6 +130,17 @@ export function createApp(cfg: CreateAppConfig): Express {
   const teamWallets = parseTeamWallets(cfg.teamWalletsCsv);
   const dailyQuota = cfg.dailyQuota ?? new DailyHumanQuota();
   const stats = cfg.stats ?? new StatsStore(teamWallets);
+  const onchainStats =
+    cfg.onchainStats ??
+    new OnchainStats({
+      reader: createViemOnchainReader(resolveMainnetRpc(), MAINNET_PAY_GUARD_ADDRESS),
+      // Operator buyers (oracle EOA and Altana buyer admin) are always team, plus VETGATE_TEAM_WALLETS.
+      teamWallets: new Set([
+        ...teamWallets,
+        MAINNET_ADMIN_ADDRESS.toLowerCase(),
+        MAINNET_ALTANA_ADMIN_ADDRESS.toLowerCase(),
+      ]),
+    });
 
   const useDefaultSelfAuth = !cfg.selfAuth;
   const selfAuth: RequestHandler =
@@ -187,8 +211,11 @@ export function createApp(cfg: CreateAppConfig): Express {
     }),
   );
 
-  app.get("/v1/stats", (_req, res) => {
-    res.json({ network: celo.caip2, stats: stats.snapshot() });
+  app.get("/v1/stats", async (_req, res) => {
+    // stats: in-memory counters since this instance started (reset on redeploy).
+    // onchain: Celo mainnet PayGuard GuardedPayment events since deploy (survives redeploys).
+    const onchain = await onchainStats.snapshot();
+    res.json({ network: celo.caip2, stats: stats.snapshot(), onchain });
   });
 
   app.use("/v1", (req, res, next) => {
