@@ -34,6 +34,7 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | daily_small_use | `0xa5a9a11195763c782d85cf38edcd4105438b3fba499859dd0d07abca188b03a5` | daily operator ALLOW payWithPermit vet402 utc=2026-11-24 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-24T01:01:45.924Z |
 | daily_small_use | `0xbcdc6f7ea49197d17f8d3d7a495dfa614112cffb5ae64c04deaf1bdbcf844649` | daily operator ALLOW payWithPermit vet402 utc=2026-11-25 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-25T01:01:51.106Z |
 | daily_small_use | `0x6ae3d06b455b14d91f11c20f3a5114fe2aee63604c6bd8f2bf06d0219ac782f6` | daily operator ALLOW payWithPermit vet402 utc=2026-11-26 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-26T01:01:56.753Z |
+| daily_buy | `0xd5be396f1ea528df5ef9e2096a803bccfd60a0f82bca992ca574d5adcf0a3ae6` | x402 https://gateway.usebuy.ai/v1/social/tiktok/profile after vet402 ALLOW utc=2026-11-26 units=5000 bodyKeccak256=0xd945bba3310fd71580c41213a9e436af7f16b502b18f2c1b7cf4c10c5308d174 evidence=evidence/daily-buy/2026-11-26.json | 2026-11-26T12:24:51.885Z |
 
 Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 
