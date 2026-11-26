@@ -14,10 +14,11 @@ contract VetGatePayGuardTest is Test {
     address buyer;
     address payTo;
 
-    bytes32 constant PERMIT_TYPEHASH =
-        keccak256("VetGatePermit(address buyer,address payTo,address token,uint256 maxAmount,uint256 expiresAt,bytes32 nonce,uint8 verdict)");
+    bytes32 constant PERMIT_TYPEHASH = keccak256(
+        "VetGatePermit(address buyer,address payTo,address token,uint256 maxAmount,uint256 expiresAt,bytes32 nonce,uint8 verdict)"
+    );
 
-  function setUp() public {
+    function setUp() public {
         oracle = vm.addr(oraclePk);
         buyer = makeAddr("buyer");
         payTo = makeAddr("payTo");

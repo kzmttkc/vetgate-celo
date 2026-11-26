@@ -9,3 +9,5 @@ via_ir = true
 
 [profile.default.fmt]
 line_length = 120
+# Deployed on Celo mainnet (0xde00...666c): keep the source byte-identical to what was compiled and deployed.
+ignore = ["contracts/VetGatePayGuard.sol"]
