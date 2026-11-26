@@ -33,6 +33,7 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | buy_purchase | `0x94c15cc3da1522d26df00e66129ddf2376210c25b2ee4989ae036f13b02264c2` | x402 usebuy bodySha256=0x9a00e598768d23cceb8686f6cc561c46520ec948589df3df49e40af428d05ae5 units=5000 | 2026-11-23T23:10:39.467Z |
 | daily_small_use | `0xa5a9a11195763c782d85cf38edcd4105438b3fba499859dd0d07abca188b03a5` | daily operator ALLOW payWithPermit vet402 utc=2026-11-24 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-24T01:01:45.924Z |
 | daily_small_use | `0xbcdc6f7ea49197d17f8d3d7a495dfa614112cffb5ae64c04deaf1bdbcf844649` | daily operator ALLOW payWithPermit vet402 utc=2026-11-25 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-25T01:01:51.106Z |
+| daily_small_use | `0x6ae3d06b455b14d91f11c20f3a5114fe2aee63604c6bd8f2bf06d0219ac782f6` | daily operator ALLOW payWithPermit vet402 utc=2026-11-26 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-26T01:01:56.753Z |
 
 Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 
