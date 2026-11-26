@@ -114,7 +114,8 @@ export function insertTxRowLine(contents: string, line: string): string {
 export type MainnetRunLogStepId =
   | MainnetRunStepId
   | "usdc_approve_pay_guard"
-  | "altana_wallet_and_session_fund";
+  | "altana_wallet_and_session_fund"
+  | "daily_buy";
 
 export function appendTxRow(
   stepId: MainnetRunLogStepId,
@@ -144,4 +145,27 @@ export function isDailyPaymentDoneUtc(utcDay: string, contents = readRunLogConte
 
 export function utcDayStamp(d = new Date()): string {
   return d.toISOString().slice(0, 10);
+}
+
+function dailyBuyRows(contents: string): string[] {
+  return contents
+    .split("\n")
+    .filter((l) => l.trimStart().startsWith("|") && l.includes("| daily_buy |"));
+}
+
+/** UTC calendar day already has a daily_buy row (purchase or recorded skip). */
+export function isDailyBuyDoneUtc(utcDay: string, contents = readRunLogContents()): boolean {
+  return dailyBuyRows(contents).some((row) => row.includes(utcDay));
+}
+
+/** Sum of `units=` across daily_buy rows that carry a real tx hash. */
+export function dailyBuySpentUnits(contents = readRunLogContents()): bigint {
+  let total = 0n;
+  for (const row of dailyBuyRows(contents)) {
+    const hash = row.match(/\|\s*daily_buy\s*\|\s*`([^`]+)`/)?.[1] ?? "";
+    if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) continue;
+    const units = row.match(/units=(\d+)/)?.[1];
+    if (units) total += BigInt(units);
+  }
+  return total;
 }

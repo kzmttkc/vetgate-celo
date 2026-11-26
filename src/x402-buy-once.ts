@@ -14,7 +14,16 @@ import {
   resolveAttributionCode,
   resolveCeloRuntime,
 } from "./chain.js";
-import { appendTxRow, assertStepNotDone } from "./mainnet-run-log.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import {
+  appendTxRow,
+  assertStepNotDone,
+  dailyBuySpentUnits,
+  isDailyBuyDoneUtc,
+  utcDayStamp,
+} from "./mainnet-run-log.js";
 import {
   BUILTIN_CANDIDATE_SELLER_URLS,
   resolveMainnetSellerPayTo,
@@ -435,15 +444,21 @@ export async function runBuyOnceDry(params: {
   return { mode: "dry", quote, eip3009, paymentPayloadV2 };
 }
 
-export async function runBuyOnceLive(params: {
-  payerPrivateKey: `0x${string}`;
-  fetchImpl?: typeof fetch;
-}): Promise<{ responseHash: Hex; txHash: `0x${string}`; quote: SelectedX402Quote }> {
-  assertStepNotDone("buy_purchase");
-  const fetchImpl = params.fetchImpl ?? fetch;
-  const account = privateKeyToAccount(params.payerPrivateKey);
-  const quote = await discoverCheapestUsefulQuote(fetchImpl);
+type PaidPurchase = {
+  responseHash: Hex;
+  txHash: `0x${string}`;
+  quote: SelectedX402Quote;
+  status: number;
+  body: string;
+};
 
+async function purchaseWithQuote(params: {
+  payerPrivateKey: `0x${string}`;
+  quote: SelectedX402Quote;
+  fetchImpl: typeof fetch;
+}): Promise<PaidPurchase> {
+  const { quote, fetchImpl } = params;
+  const account = privateKeyToAccount(params.payerPrivateKey);
   const coreClient = createBuyOnceX402Client(account);
   const httpClient = new x402HTTPClient(coreClient);
 
@@ -487,14 +502,132 @@ export async function runBuyOnceLive(params: {
   if (!txHash || txHash === "0x0") {
     throw new Error("payment completed but settlement transaction hash missing");
   }
+  return { responseHash, txHash, quote, status: response.status, body: paidBody };
+}
+
+export async function runBuyOnceLive(params: {
+  payerPrivateKey: `0x${string}`;
+  fetchImpl?: typeof fetch;
+}): Promise<{ responseHash: Hex; txHash: `0x${string}`; quote: SelectedX402Quote }> {
+  assertStepNotDone("buy_purchase");
+  const fetchImpl = params.fetchImpl ?? fetch;
+  const quote = await discoverCheapestUsefulQuote(fetchImpl);
+  const paid = await purchaseWithQuote({ payerPrivateKey: params.payerPrivateKey, quote, fetchImpl });
 
   appendTxRow(
     "buy_purchase",
-    txHash,
-    `x402 usebuy bodySha256=${responseHash} units=${quote.accept.maxAmountRequired}`,
+    paid.txHash,
+    `x402 usebuy bodySha256=${paid.responseHash} units=${quote.accept.maxAmountRequired}`,
   );
 
-  return { responseHash, txHash, quote };
+  return { responseHash: paid.responseHash, txHash: paid.txHash, quote };
+}
+
+/** Daily purchase: at most 0.005 USDC per call. */
+export const DAILY_BUY_MAX_UNITS = 5_000n;
+/** All daily purchases together stay under 0.1 USDC. */
+export const DAILY_BUY_TOTAL_CAP_UNITS = 100_000n;
+export const DAILY_BUY_EVIDENCE_DIR = join(process.cwd(), "evidence", "daily-buy");
+
+export type DailyBuyResult =
+  | { mode: "skip"; reason: string; day: string }
+  | {
+      mode: "live" | "dry";
+      day: string;
+      sellerUrl: string;
+      units: bigint;
+      txHash?: `0x${string}`;
+      responseHash?: Hex;
+      evidencePath?: string;
+    };
+
+/** Throws when this purchase would break the per-call or total cap. */
+export function assertDailyBuyBudget(units: bigint, spentUnits: bigint): void {
+  if (units > DAILY_BUY_MAX_UNITS) {
+    throw new Error(`refused: daily buy price ${units} units is above ${DAILY_BUY_MAX_UNITS}`);
+  }
+  if (spentUnits + units > DAILY_BUY_TOTAL_CAP_UNITS) {
+    throw new Error(
+      `refused: daily buys would reach ${spentUnits + units} units (cap ${DAILY_BUY_TOTAL_CAP_UNITS})`,
+    );
+  }
+}
+
+/**
+ * Once per UTC day: ask vet402 about the seller, and only on ALLOW buy one x402 call
+ * through Celo's facilitator. The paid response is kept under evidence/daily-buy/.
+ */
+export async function runDailyBuy(params: {
+  payerPrivateKey?: `0x${string}`;
+  live: boolean;
+  fetchImpl?: typeof fetch;
+  now?: Date;
+}): Promise<DailyBuyResult> {
+  const fetchImpl = params.fetchImpl ?? fetch;
+  const day = utcDayStamp(params.now);
+  if (isDailyBuyDoneUtc(day)) {
+    return { mode: "skip", reason: "already recorded", day };
+  }
+  const seller = await resolveMainnetSellerPayTo(fetchImpl);
+  if (seller.source !== "vet402") {
+    return { mode: "skip", reason: "not ALLOW", day };
+  }
+  const quote = await quoteCheapestSeller(seller, fetchImpl);
+  const units = parseUsdcUnits(quote.accept.maxAmountRequired);
+  if (quote.accept.payTo.toLowerCase() !== seller.payTo.toLowerCase()) {
+    throw new Error(
+      `refused: 402 payTo ${quote.accept.payTo} differs from the payTo vet402 vouched for (${seller.payTo})`,
+    );
+  }
+  assertDailyBuyBudget(units, dailyBuySpentUnits());
+  if (!params.live) {
+    return { mode: "dry", day, sellerUrl: quote.sellerUrl, units };
+  }
+  if (!params.payerPrivateKey) {
+    throw new Error("missing operator key (VETGATE_ORACLE_SIGNER_PK or .secrets/mainnet-admin.key)");
+  }
+  const paid = await purchaseWithQuote({ payerPrivateKey: params.payerPrivateKey, quote, fetchImpl });
+  mkdirSync(DAILY_BUY_EVIDENCE_DIR, { recursive: true });
+  const evidencePath = join(DAILY_BUY_EVIDENCE_DIR, `${day}.json`);
+  let parsed: unknown = paid.body;
+  try {
+    parsed = JSON.parse(paid.body);
+  } catch {
+    // keep the raw text
+  }
+  writeFileSync(
+    evidencePath,
+    `${JSON.stringify(
+      {
+        utcDay: day,
+        sellerUrl: quote.sellerUrl,
+        request: { method: quote.httpRequest.method, url: quote.httpRequest.url, body: quote.httpRequest.body ?? null },
+        vet402Verdict: "ALLOW",
+        payTo: quote.accept.payTo,
+        units: units.toString(),
+        settlementTx: paid.txHash,
+        httpStatus: paid.status,
+        bodyKeccak256: paid.responseHash,
+        response: parsed,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  appendTxRow(
+    "daily_buy",
+    paid.txHash,
+    `x402 ${quote.sellerUrl} after vet402 ALLOW utc=${day} units=${units} bodyKeccak256=${paid.responseHash} evidence=evidence/daily-buy/${day}.json`,
+  );
+  return {
+    mode: "live",
+    day,
+    sellerUrl: quote.sellerUrl,
+    units,
+    txHash: paid.txHash,
+    responseHash: paid.responseHash,
+    evidencePath,
+  };
 }
 
 export function syncBuyOnceNetworkEnv(): void {
