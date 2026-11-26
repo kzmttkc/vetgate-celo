@@ -1,5 +1,7 @@
 # VetGate Celo (Self Agent ID + Altana PayGuard)
 
+[![test](https://github.com/kzmttkc/vetgate-celo/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/kzmttkc/vetgate-celo/actions/workflows/test.yml)
+
 ## Judge quick card (mainnet 42220)
 
 | Item | Value |
@@ -102,7 +104,7 @@ Live payment requires `--i-understand-mainnet` and records `buy_purchase` in [MA
 
 Mainnet scripts require `--i-understand-mainnet` for live broadcast. See [MAINNET_RUN.md](MAINNET_RUN.md) for the full tx table.
 
-The Altana session demo is mainnet steps **3**, **4**, and **6** (grant, ALLOW `payWithPermit`, `revokeSession`). Step **5** is a direct EOA `0xCDb0…9941` `payWithPermit` BLOCK revert (`VerdictNotAllow`), not an Altana session `execute`. `revokeSession` (step 6) mined at `2026-11-23T11:43:23.431Z`, before the BLOCK tx at `2026-11-23T11:49:23.012Z`. The daily loop (`scripts/daily.ts`, step 7) pays 0.01 USDC from the operator wallet after a public vet402 ALLOW check and a locally minted oracle permit (no Altana session or VetGate HTTP). Daily on-chain traffic is intentional operator use, not buyer-session automation.
+The Altana session demo is mainnet steps **3**, **4**, and **6** (grant, ALLOW `payWithPermit`, `revokeSession`). Step **5** is a direct EOA `0xCDb0…9941` `payWithPermit` BLOCK revert (`VerdictNotAllow`), not an Altana session `execute`. `revokeSession` (step 6) mined at `2026-11-23T11:43:23.431Z`, before the BLOCK tx at `2026-11-23T11:49:23.012Z`. The daily loop (`scripts/daily.ts`, step 7) sends a guarded 0.01 USDC payment from the operator wallet after a public vet402 ALLOW check and a locally minted oracle permit (no Altana session or VetGate HTTP). Daily on-chain traffic is intentional operator use, not buyer-session automation.
 
 ## Accounting (operator vs independent)
 
@@ -110,7 +112,7 @@ The Altana session demo is mainnet steps **3**, **4**, and **6** (grant, ALLOW `
 |---|---|---|
 | Operator / oracle | `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435` | PayGuard oracle signer, Self agent 194, ERC-8004 token 9907, VetGate oracle HTTP |
 | Buyer admin (operated by me, separate key) | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` | Altana EIP-7702 buyer, grantSession, execute, revokeSession, step 5 direct BLOCK tx |
-| Third-party x402 seller payTo (gateway.usebuy.ai) | `0x20faaca5f980e29639a0fcc6dca6988e18ed333b` | Receives the ALLOW payment. vet402's public check returned ALLOW for this seller |
+| Payment recipient: the payTo address that gateway.usebuy.ai advertises in its x402 terms | `0x20faaca5f980e29639a0fcc6dca6988e18ed333b` | Receives the guarded 0.01 USDC transfer after vet402's public check returns ALLOW for this seller. The x402 purchase settled by Celo's facilitator is `buy_purchase` in [MAINNET_RUN.md](MAINNET_RUN.md) |
 
 The operator wallet mints permits and deploys PayGuard. The buyer admin wallet is a separate EOA that holds the session key material under `.secrets/session.key`. Neither wallet is the vet402 seller payTo.
 
