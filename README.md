@@ -18,7 +18,7 @@
 | ERC-8021 attribution | `celo_56284feb7672` |
 | x402 facilitator | https://api.x402.celo.org |
 | vet402 seller check | https://vet402.com/api/v1/check?url= |
-| Demo video | https://youtu.be/tpzMnuv0I18 |
+| Demo video | https://youtu.be/uhBd42S8o1I (1:40, Self track then Altana session revoke at 1:13) |
 
 ```bash
 forge test --summary && npm test && npm run check-no-keys
