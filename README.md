@@ -13,6 +13,7 @@
 | ALLOW payWithPermit (step 4) | [0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731](https://celoscan.io/tx/0xf1ddb4f25a50b905ef4dd3ce7bf0b8225132eda63a093abedf52793d6a5b0731) (`2026-11-23T11:43:11.537Z`) |
 | revokeSession (step 6) | [0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7](https://celoscan.io/tx/0xfda5d955f808b9637961f6945cd9ee1704502bf31746677fc0912f2bd65aeeb7) (`2026-11-23T11:43:23.431Z`, **before** step 5 BLOCK) |
 | BLOCK revert (step 5) | [0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e](https://celoscan.io/tx/0x385d54da5f82f863e055e9edfa4057478f399cf8df28a5ce81b734accdf0d15e) (`2026-11-23T11:49:23.012Z`, direct EOA `0xCDb0…9941`, status 0, `VerdictNotAllow`) |
+| Paid permit via x402 (2nd call, 0.01 USDC) | [0xd8e7142afe97dfd2441f3e5efcdd9a8017e468e93d58aa50adb3a29e080162cd](https://celoscan.io/tx/0xd8e7142afe97dfd2441f3e5efcdd9a8017e468e93d58aa50adb3a29e080162cd) (`2026-11-27T22:12:39Z`, settled by the Celo facilitator, `tier: paid`; payer `0xBf77…79bF` and payee `0x970b…0435` are both my wallets, so this proves the paid path works and is not counted as outside use) |
 | Oracle / Self agent 194 / ERC-8004 #9907 | `0x970b37B3C58eDc62Cccb7BeeaB5972bC7c6b0435` |
 | Altana buyer admin | `0xCDb0FF6e6Dfc33F9d75288772c8EfFaa13df9941` |
 | Self agent registry | https://agent-api.self.xyz/api/agent/info/42220/194 |
