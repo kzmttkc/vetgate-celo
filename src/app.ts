@@ -339,7 +339,7 @@ export function createApp(cfg: CreateAppConfig): Express {
       celo.caip2,
       new ExactEvmScheme(),
     );
-    app.use(paymentMiddleware(routes, x402Server, undefined, undefined, false));
+    app.use(paymentMiddleware(routes, x402Server, undefined, undefined, true)); // lazy init on first paid request: loads the facilitator's supported kinds
   }
 
   app.get("/v1/permit", async (req, res) => {
