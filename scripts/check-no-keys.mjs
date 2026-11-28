@@ -46,6 +46,13 @@ function scanText(rel, text) {
     if (rel.endsWith(".md") && text.includes(`\`${hex}\``)) continue;
     if (rel.endsWith(".md") && line.includes("celoscan.io/tx/")) continue;
     if (rel.includes("check-no-keys")) continue;
+    // Evidence JSON: on-chain tx hashes and content hashes are public 32-byte values, not keys.
+    // Only exempt them under field names that say so; the .secrets fingerprint check above still applies.
+    if (
+      rel.startsWith("evidence/") &&
+      rel.endsWith(".json") &&
+      /"(settlementTx|transaction|txHash|bodyKeccak256|[A-Za-z]*Hash)"\s*:\s*"0x[0-9a-fA-F]{64}"/.test(line)
+    ) continue;
     violations.push(`${rel}: looks like a raw secp256k1 private key`);
   }
 }
