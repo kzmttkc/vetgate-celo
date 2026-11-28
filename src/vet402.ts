@@ -4,6 +4,7 @@ export type Vet402CheckDocument = {
   recommendation?: string | null;
   delivery?: unknown;
   not_in_catalog?: boolean;
+  receipt?: { input_sha256: string; verdict: string; as_of: string; signer: string; signature: string };
   [key: string]: unknown;
 };
 

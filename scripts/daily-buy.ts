@@ -15,6 +15,10 @@ async function main(): Promise<void> {
     console.log(`daily_buy: skip — ${result.reason} utc=${result.day}`);
     return;
   }
+  if (result.mode === "stopped") {
+    console.log(`daily_buy: stopped — ${result.reason} utc=${result.day} intent=${result.intentKey}`);
+    return;
+  }
   console.log(
     JSON.stringify(
       { ...result, units: result.units.toString() },

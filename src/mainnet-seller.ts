@@ -11,6 +11,8 @@ export type ResolvedMainnetSeller = {
   payTo: `0x${string}`;
   sellerUrl: string;
   source: "vet402" | "controlled";
+  /** vet402's EIP-191 verdict receipt for this seller, when the check carried one. */
+  receipt?: Vet402CheckDocument["receipt"];
 };
 
 function payToFromVet402(doc: Vet402CheckDocument): `0x${string}` | undefined {
@@ -84,7 +86,7 @@ export async function resolveMainnetSellerPayTo(
     if (!isVet402Allow(doc)) continue;
     const payTo = payToFromVet402(doc);
     if (!payTo || payTo.toLowerCase() === MAINNET_ADMIN_ADDRESS.toLowerCase()) continue;
-    return { payTo, sellerUrl, source: "vet402" };
+    return { payTo, sellerUrl, source: "vet402", receipt: doc.receipt };
   }
   return {
     payTo: MAINNET_CONTROLLED_SELLER_PAYTO,

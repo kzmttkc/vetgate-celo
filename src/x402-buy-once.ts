@@ -29,6 +29,19 @@ import {
   resolveMainnetSellerPayTo,
   type ResolvedMainnetSeller,
 } from "./mainnet-seller.js";
+import {
+  FileIntentStore,
+  authorizationFromPayload,
+  buildBundleReceipt,
+  computeIntentKey,
+  createAuthorizationStateReader,
+  decideBeforeSigning,
+  deliveryClaimFromBody,
+  fetchPaymentProof,
+  type AuthorizationStateReader,
+  type BundleReceipt,
+  type IntentStore,
+} from "./pay-guard.js";
 
 /** Max x402 purchase: 0.05 USDC (6 decimals). */
 export const BUY_ONCE_MAX_USDC_UNITS = 50_000n;
@@ -450,14 +463,22 @@ type PaidPurchase = {
   quote: SelectedX402Quote;
   status: number;
   body: string;
+  contentType: string | null;
+  receivedAt: Date;
+};
+
+export type PurchaseGuard = {
+  store: IntentStore;
+  intentKey: string;
 };
 
 async function purchaseWithQuote(params: {
   payerPrivateKey: `0x${string}`;
   quote: SelectedX402Quote;
   fetchImpl: typeof fetch;
+  guard?: PurchaseGuard;
 }): Promise<PaidPurchase> {
-  const { quote, fetchImpl } = params;
+  const { quote, fetchImpl, guard } = params;
   const account = privateKeyToAccount(params.payerPrivateKey);
   const coreClient = createBuyOnceX402Client(account);
   const httpClient = new x402HTTPClient(coreClient);
@@ -474,7 +495,50 @@ async function purchaseWithQuote(params: {
     JSON.parse(bodyText),
   );
 
+  // The second 402 must offer the same payTo and asset, at no more than the quoted price.
+  const quotedUnits = parseUsdcUnits(quote.accept.maxAmountRequired);
+  const offers = (paymentRequired.accepts as PaymentRequirements[]).filter((r) => {
+    const units = (() => {
+      try {
+        return paymentRequirementUnits(r);
+      } catch {
+        return undefined;
+      }
+    })();
+    return (
+      String(r.payTo).toLowerCase() === quote.accept.payTo.toLowerCase() &&
+      String(r.asset).toLowerCase() === quote.accept.asset.toLowerCase() &&
+      units !== undefined &&
+      units <= quotedUnits
+    );
+  });
+  if (offers.length === 0) {
+    throw new Error("refused: the 402 at payment time no longer matches the quoted payTo, asset or price");
+  }
+  paymentRequired.accepts = offers;
   const paymentPayload = await httpClient.createPaymentPayload(paymentRequired);
+  {
+    const auth = authorizationFromPayload(paymentPayload);
+    if (auth.to.toLowerCase() !== quote.accept.payTo.toLowerCase() || BigInt(auth.value) > quotedUnits) {
+      throw new Error("refused: signed authorization does not match the quoted payTo or price");
+    }
+  }
+  if (guard) {
+    // Record the signed authorization before it leaves this process, so a retry can ask the chain about it.
+    const auth = authorizationFromPayload(paymentPayload);
+    const accepted = paymentPayload.accepted;
+    guard.store.put({
+      intentKey: guard.intentKey,
+      payer: auth.from,
+      payTo: String(accepted?.payTo ?? quote.accept.payTo) as `0x${string}`,
+      asset: String(accepted?.asset ?? quote.accept.asset) as `0x${string}`,
+      units: (accepted ? paymentRequirementUnits(accepted) : parseUsdcUnits(quote.accept.maxAmountRequired)).toString(),
+      nonce: auth.nonce,
+      validBefore: auth.validBefore,
+      status: "signed",
+      signedAt: new Date().toISOString(),
+    });
+  }
   const payHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
 
   response = await fetchImpl(
@@ -483,6 +547,7 @@ async function purchaseWithQuote(params: {
   );
 
   const paidBody = await response.text();
+  const receivedAt = new Date();
   const responseHash = keccak256(stringToHex(paidBody));
 
   let settle;
@@ -502,7 +567,24 @@ async function purchaseWithQuote(params: {
   if (!txHash || txHash === "0x0") {
     throw new Error("payment completed but settlement transaction hash missing");
   }
-  return { responseHash, txHash, quote, status: response.status, body: paidBody };
+  if (guard) {
+    try {
+      const prior = guard.store.get(guard.intentKey);
+      if (prior) guard.store.put({ ...prior, status: "settled", txHash, settledAt: new Date().toISOString() });
+    } catch (err) {
+      // Paid already. The record stays "signed", so the next run asks the chain and stops; keep going to log the tx.
+      console.error(`daily_buy: intent not marked settled: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return {
+    responseHash,
+    txHash,
+    quote,
+    status: response.status,
+    body: paidBody,
+    contentType: response.headers.get("content-type"),
+    receivedAt,
+  };
 }
 
 export async function runBuyOnceLive(params: {
@@ -528,6 +610,8 @@ export const DAILY_BUY_MAX_UNITS = 5_000n;
 /** All daily purchases together stay under 0.1 USDC. */
 export const DAILY_BUY_TOTAL_CAP_UNITS = 100_000n;
 export const DAILY_BUY_EVIDENCE_DIR = join(process.cwd(), "evidence", "daily-buy");
+/** Signed-but-maybe-unsettled authorizations, one file per intent (nonces are public once used). */
+export const DAILY_BUY_INTENT_DIR = join(process.cwd(), "evidence", "daily-buy", "intents");
 
 export type DailyBuyResult =
   | { mode: "skip"; reason: string; day: string }
@@ -539,7 +623,10 @@ export type DailyBuyResult =
       txHash?: `0x${string}`;
       responseHash?: Hex;
       evidencePath?: string;
-    };
+      bundlePath?: string;
+      bundle?: BundleReceipt;
+    }
+  | { mode: "stopped"; day: string; reason: string; intentKey: string; txHash?: `0x${string}` };
 
 /** Throws when this purchase would break the per-call or total cap. */
 export function assertDailyBuyBudget(units: bigint, spentUnits: bigint): void {
@@ -562,9 +649,15 @@ export async function runDailyBuy(params: {
   live: boolean;
   fetchImpl?: typeof fetch;
   now?: Date;
+  intentStore?: IntentStore;
+  readAuthorizationState?: AuthorizationStateReader;
+  evidenceDir?: string;
+  recordRun?: boolean;
 }): Promise<DailyBuyResult> {
   const fetchImpl = params.fetchImpl ?? fetch;
   const day = utcDayStamp(params.now);
+  const recordRun = params.recordRun ?? true;
+  const evidenceDir = params.evidenceDir ?? DAILY_BUY_EVIDENCE_DIR;
   if (isDailyBuyDoneUtc(day)) {
     return { mode: "skip", reason: "already recorded", day };
   }
@@ -579,16 +672,84 @@ export async function runDailyBuy(params: {
       `refused: 402 payTo ${quote.accept.payTo} differs from the payTo vet402 vouched for (${seller.payTo})`,
     );
   }
-  assertDailyBuyBudget(units, dailyBuySpentUnits());
+  const store = params.intentStore ?? new FileIntentStore(DAILY_BUY_INTENT_DIR);
+  assertDailyBuyBudget(units, dailyBuySpentUnits() + unloggedIntentUnits(store));
   if (!params.live) {
     return { mode: "dry", day, sellerUrl: quote.sellerUrl, units };
   }
   if (!params.payerPrivateKey) {
     throw new Error("missing operator key (VETGATE_ORACLE_SIGNER_PK or .secrets/mainnet-admin.key)");
   }
-  const paid = await purchaseWithQuote({ payerPrivateKey: params.payerPrivateKey, quote, fetchImpl });
-  mkdirSync(DAILY_BUY_EVIDENCE_DIR, { recursive: true });
-  const evidencePath = join(DAILY_BUY_EVIDENCE_DIR, `${day}.json`);
+  const payer = privateKeyToAccount(params.payerPrivateKey).address;
+  const intentKey = computeIntentKey({ day, payer });
+  const unlock = store instanceof FileIntentStore ? store.lock() : () => {};
+  try {
+    return await guardedDailyBuy({ ...params, payerPrivateKey: params.payerPrivateKey }, {
+      store,
+      intentKey,
+      day,
+      seller,
+      quote,
+      units,
+      fetchImpl,
+      evidenceDir,
+      recordRun,
+    });
+  } finally {
+    unlock();
+  }
+}
+
+/** Units of paid or maybe-paid intents that have no MAINNET_RUN.md row yet (counted against the total cap). */
+export function unloggedIntentUnits(store: IntentStore): bigint {
+  return store
+    .list()
+    .filter((r) => !r.logged && r.status !== "expired")
+    .reduce((sum, r) => sum + BigInt(r.units), 0n);
+}
+
+async function guardedDailyBuy(
+  params: { payerPrivateKey: `0x${string}`; readAuthorizationState?: AuthorizationStateReader; now?: Date },
+  ctx: {
+    store: IntentStore;
+    intentKey: string;
+    day: string;
+    seller: Awaited<ReturnType<typeof resolveMainnetSellerPayTo>>;
+    quote: SelectedX402Quote;
+    units: bigint;
+    fetchImpl: typeof fetch;
+    evidenceDir: string;
+    recordRun: boolean;
+  },
+): Promise<DailyBuyResult> {
+  const { store, intentKey, day, seller, quote, units, fetchImpl, evidenceDir, recordRun } = ctx;
+  const decision = await decideBeforeSigning({
+    store,
+    intentKey,
+    readAuthorizationState: params.readAuthorizationState ?? createAuthorizationStateReader(CELO_MAINNET_RPC),
+    nowSec: Math.floor((params.now ?? new Date()).getTime() / 1000),
+  });
+  if (decision.action === "stop") {
+    const rec = decision.record;
+    if (decision.reason === "already_paid") {
+      // The chain says it was paid. Settle the record so it stops blocking, and log it if the tx is known.
+      const settled = { ...rec, status: "settled" as const, settledAt: rec.settledAt ?? new Date().toISOString() };
+      if (recordRun && rec.txHash && !rec.logged) {
+        appendTxRow("daily_buy", rec.txHash, `x402 recovered after retry utc=${day} units=${rec.units} intent=${rec.intentKey}`);
+        settled.logged = true;
+      }
+      store.put(settled);
+    }
+    return { mode: "stopped", day, reason: decision.reason, intentKey: rec.intentKey, txHash: rec.txHash };
+  }
+  const paid = await purchaseWithQuote({
+    payerPrivateKey: params.payerPrivateKey,
+    quote,
+    fetchImpl,
+    guard: { store, intentKey },
+  });
+  mkdirSync(evidenceDir, { recursive: true });
+  const evidencePath = join(evidenceDir, `${day}.json`);
   let parsed: unknown = paid.body;
   try {
     parsed = JSON.parse(paid.body);
@@ -614,11 +775,41 @@ export async function runDailyBuy(params: {
       2,
     )}\n`,
   );
-  appendTxRow(
-    "daily_buy",
-    paid.txHash,
-    `x402 ${quote.sellerUrl} after vet402 ALLOW utc=${day} units=${units} bodyKeccak256=${paid.responseHash} evidence=evidence/daily-buy/${day}.json`,
-  );
+  let bundle: BundleReceipt | undefined;
+  let bundlePath: string | undefined;
+  if (seller.receipt) {
+    try {
+      const paymentProof = await fetchPaymentProof({ network: CELO_MAINNET_CAIP2, transaction: paid.txHash, fetchImpl });
+      if (!paymentProof.found || paymentProof.status !== "confirmed") {
+        throw new Error(`payment not confirmed yet (${paymentProof.status})`);
+      }
+      bundle = await buildBundleReceipt({
+        presign: seller.receipt,
+        paymentProof,
+        delivery: deliveryClaimFromBody({
+          status: paid.status,
+          contentType: paid.contentType,
+          body: paid.body,
+          receivedAt: paid.receivedAt,
+        }),
+        agent: privateKeyToAccount(params.payerPrivateKey),
+      });
+      bundlePath = join(evidenceDir, `${day}.bundle.json`);
+      writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
+    } catch (err) {
+      // The payment already happened; a missing bundle must not hide it. Say so and keep the tx row.
+      console.error(`daily_buy: bundle receipt not written: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  if (recordRun) {
+    appendTxRow(
+      "daily_buy",
+      paid.txHash,
+      `x402 ${quote.sellerUrl} after vet402 ALLOW utc=${day} units=${units} bodyKeccak256=${paid.responseHash} evidence=evidence/daily-buy/${day}.json`,
+    );
+    const rec = store.get(intentKey);
+    if (rec) store.put({ ...rec, logged: true });
+  }
   return {
     mode: "live",
     day,
@@ -627,6 +818,8 @@ export async function runDailyBuy(params: {
     txHash: paid.txHash,
     responseHash: paid.responseHash,
     evidencePath,
+    bundlePath,
+    bundle,
   };
 }
 

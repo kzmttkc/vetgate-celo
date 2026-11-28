@@ -24,3 +24,6 @@ api/index.mjs
 .env*
 .self/
 *.key
+
+# Pay Guard intent store (local; holds signed-but-maybe-unsettled authorizations)
+evidence/daily-buy/intents/
