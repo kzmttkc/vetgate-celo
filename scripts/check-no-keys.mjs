@@ -51,7 +51,7 @@ function scanText(rel, text) {
     if (
       rel.startsWith("evidence/") &&
       rel.endsWith(".json") &&
-      /"(settlementTx|transaction|txHash|bodyKeccak256|[A-Za-z]*Hash)"\s*:\s*"0x[0-9a-fA-F]{64}"/.test(line)
+      /"(tx|settlementTx|transaction|txHash|bodyKeccak256|[A-Za-z]*Hash)"\s*:\s*"0x[0-9a-fA-F]{64}"/.test(line)
     ) continue;
     violations.push(`${rel}: looks like a raw secp256k1 private key`);
   }
