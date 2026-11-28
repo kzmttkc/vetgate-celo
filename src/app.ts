@@ -1,6 +1,13 @@
 import express, { type Express, type RequestHandler } from "express";
 import { privateKeyToAccount } from "viem/accounts";
 import { HEADERS, SelfAgentVerifier } from "@selfxyz/agent-sdk";
+import {
+  ERC8004_HEADERS,
+  createCeloErc8004Reader,
+  verifyErc8004Request,
+  type Erc8004Agent,
+  type Erc8004Reader,
+} from "./erc8004-auth.js";
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { HTTPFacilitatorClient, type RoutesConfig } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -37,6 +44,8 @@ export type CreateAppConfig = {
   /** When false (default in tests), exhausted quota returns a synthetic 402 JSON instead of facilitator calls. */
   enableX402?: boolean;
   selfAuth?: RequestHandler;
+  /** Reads ERC-8004 owner / agent wallet on Celo (agents without a Self Agent ID). */
+  erc8004Reader?: Erc8004Reader;
   dailyQuota?: DailyHumanQuota;
   stats?: StatsStore;
   /** Celo mainnet PayGuard event counter for /v1/stats (tests inject a mocked reader). */
@@ -218,10 +227,40 @@ export function createApp(cfg: CreateAppConfig): Express {
     res.json({ network: celo.caip2, stats: stats.snapshot(), onchain });
   });
 
-  app.use("/v1", (req, res, next) => {
+  let erc8004Reader: Erc8004Reader | undefined = cfg.erc8004Reader;
+  app.use("/v1", async (req, res, next) => {
     if (req.path === "/stats") return next();
     const signature = req.headers[HEADERS.SIGNATURE];
     const timestamp = req.headers[HEADERS.TIMESTAMP];
+    const ercId = req.headers[ERC8004_HEADERS.AGENT_ID];
+    const ercSig = req.headers[ERC8004_HEADERS.SIGNATURE];
+    const ercTs = req.headers[ERC8004_HEADERS.TIMESTAMP];
+    if (typeof signature !== "string" && typeof ercId === "string") {
+      // ERC-8004 path: an agent registered on Celo by another team, without a Self Agent ID.
+      // It never gets the free human quota; every permit on this path is paid via x402.
+      if (typeof ercSig !== "string" || typeof ercTs !== "string") {
+        res.status(401).json({
+          error: "erc8004_invalid",
+          message: "Send x-erc8004-agent-id, x-erc8004-signature and x-erc8004-timestamp together.",
+        });
+        return;
+      }
+      erc8004Reader ??= createCeloErc8004Reader(celo.rpc);
+      const result = await verifyErc8004Request({
+        method: req.method,
+        originalUrl: req.originalUrl,
+        agentIdHeader: ercId,
+        signature: ercSig,
+        timestamp: ercTs,
+        reader: erc8004Reader,
+      });
+      if (!result.ok) {
+        res.status(result.status).json({ error: result.error, message: result.message });
+        return;
+      }
+      (req as express.Request & { erc8004Agent?: Erc8004Agent }).erc8004Agent = result.agent;
+      return next();
+    }
     if (
       useDefaultSelfAuth &&
       (typeof signature !== "string" || typeof timestamp !== "string")
@@ -276,10 +315,14 @@ export function createApp(cfg: CreateAppConfig): Express {
       });
     }
 
-    const agent = req.agent!;
-    const nullifier = agent.nullifier.toString();
     (req as express.Request & { vetgateQuery?: PermitQuery }).vetgateQuery = query;
     (req as express.Request & { vetgateTier?: "free" | "paid" }).vetgateTier = "paid";
+    if (!req.agent && (req as express.Request & { erc8004Agent?: Erc8004Agent }).erc8004Agent) {
+      if (!cfg.enableX402 || !cfg.x402ApiKey) return synthetic402(res);
+      return next();
+    }
+    const agent = req.agent!;
+    const nullifier = agent.nullifier.toString();
 
     const freeNonce = deriveFreePermitNonce(nullifier);
 
@@ -351,7 +394,10 @@ export function createApp(cfg: CreateAppConfig): Express {
     if (tier === "free") {
       return res.status(200).end();
     }
-    stats.record(req.agent!.address, "paid");
+    const payer =
+      req.agent?.address ??
+      (req as express.Request & { erc8004Agent?: Erc8004Agent }).erc8004Agent?.address;
+    stats.record(payer!, "paid");
     const payload = await buildPermitResponse(cfg, query, "paid");
     return res.status(payload.status).json(payload.body);
   });

@@ -36,6 +36,7 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | `GET /health` | `{"ok":true,"network":"mainnet","chainId":42220}` |
 | `GET /v1/stats` | `{"network":"eip155:42220","stats":{...},"onchain":{...}}` (no Self headers required). `stats` counts calls since the instance started (resets on redeploy). `onchain` counts PayGuard `GuardedPayment` events on Celo mainnet from deploy block `83529645` to `toBlock`: `payments`, `amount` (raw token units per token), `payers` (distinct buyers), `team` / `independent` split, `fromBlock`, `toBlock`, `asOf` (UTC). Cached 60 s. If the RPC fails it returns `"onchain":{"error":"rpc_unavailable"}`, never zeros. |
 | `GET /v1/permit?...` without Self headers | HTTP `401`, JSON error `self_agent_required` |
+| `GET /v1/permit?...` with ERC-8004 headers (`x-erc8004-agent-id`, `x-erc8004-signature`, `x-erc8004-timestamp`) | For agents registered on the Celo ERC-8004 registry by any team, without a Self Agent ID. The signer must be the agent owner or its agent wallet; the EIP-191 message is `VetGate ERC-8004 request\nagent: <id>\nGET <path?query>\nts: <unix seconds>` (within 300 s). No free tier: the permit is paid via x402 (HTTP `402`, then 0.01 USDC). See [src/erc8004-auth.ts](src/erc8004-auth.ts). |
 | `GET /v1/permit?...` with valid Self agent 194 signature | HTTP `200` with `verdict`, `permit`, `tier`, `freeQuota` (free tier), and vet402 fields when ALLOW |
 
 ### Self-signed permit demo (read-only HTTP)
