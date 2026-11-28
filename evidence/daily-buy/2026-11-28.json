@@ -1,0 +1,105 @@
+{
+  "utcDay": "2026-11-28",
+  "sellerUrl": "https://gateway.usebuy.ai/v1/social/tiktok/profile",
+  "request": {
+    "method": "POST",
+    "url": "https://gateway.usebuy.ai/v1/social/tiktok/profile",
+    "body": "{\"username\":\"cursor\"}"
+  },
+  "vet402Verdict": "ALLOW",
+  "payTo": "0x20faAca5F980E29639A0FCC6dcA6988E18ed333B",
+  "units": "5000",
+  "settlementTx": "0x913832ac9ef7e564be9f648b895db36162fcf5b9286e357ed9a71271289ec963",
+  "httpStatus": 200,
+  "bodyKeccak256": "0xd17630bef8a77caaa742928490eadb5b5fe8499960bf775f0096e96c3d4de700",
+  "response": {
+    "capability": "tiktok.profile",
+    "transaction": "0x913832ac9ef7e564be9f648b895db36162fcf5b9286e357ed9a71271289ec963",
+    "payment": {
+      "token": "USDC",
+      "asset": "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+      "atomic": "5000",
+      "usd": "0.005"
+    },
+    "provider": "tikhub",
+    "upstreamRunId": "01M8FTRSFVW44D0GP8YEQT4XZK",
+    "resultCount": 1,
+    "output": {
+      "userInfo": {
+        "user": {
+          "id": "7021043590873973766",
+          "shortId": "",
+          "uniqueId": "cursor",
+          "nickname": "nemesis",
+          "avatarLarger": "https://p16-common-sign.tiktokcdn-us.com/tos-alisg-avt-0068/db9cbb2cc00942d548b99de03b08ba3f~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=f5597dc2&x-expires=1796000400&x-signature=iR6X4T18L85jdlPlSVk0skflKfk%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast8",
+          "avatarMedium": "https://p16-common-sign.tiktokcdn-us.com/tos-alisg-avt-0068/db9cbb2cc00942d548b99de03b08ba3f~tplv-tiktokx-cropcenter:720:720.jpeg?dr=9640&refresh_token=a60a2a23&x-expires=1796000400&x-signature=9JqgOJG5laZpDc9ZzxFNMLYdVg8%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast8",
+          "avatarThumb": "https://p16-common-sign.tiktokcdn-us.com/tos-alisg-avt-0068/db9cbb2cc00942d548b99de03b08ba3f~tplv-tiktokx-cropcenter:100:100.jpeg?dr=9640&refresh_token=8fa973d5&x-expires=1796000400&x-signature=nlgkWDvOod3sxSr28m8clX1PF4g%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast8",
+          "signature": "",
+          "createTime": 1634729119,
+          "verified": false,
+          "secUid": "MS4wLjABAAAAUcM1OVTMTbaBGDG944LfbX1t7kJiDzcVSW8bggXzzdnkGof8TGuKMWQRRkCT7zDF",
+          "ftc": false,
+          "relation": 0,
+          "openFavorite": false,
+          "commentSetting": 0,
+          "commerceUserInfo": {
+            "commerceUser": false
+          },
+          "duetSetting": 0,
+          "stitchSetting": 0,
+          "privateAccount": false,
+          "secret": false,
+          "isADVirtual": false,
+          "roomId": "",
+          "uniqueIdModifyTime": 0,
+          "ttSeller": false,
+          "downloadSetting": 0,
+          "profileTab": {
+            "showMusicTab": false,
+            "showQuestionTab": false,
+            "showPlayListTab": false
+          },
+          "followingVisibility": 1,
+          "recommendReason": "",
+          "nowInvitationCardUrl": "",
+          "nickNameModifyTime": 1690237644,
+          "isEmbedBanned": false,
+          "canExpPlaylist": true,
+          "profileEmbedPermission": 1,
+          "language": "",
+          "eventList": [],
+          "suggestAccountBind": false,
+          "isOrganization": 0,
+          "UserStoryStatus": 0,
+          "shortDramaCreator": {}
+        },
+        "stats": {
+          "followerCount": 0,
+          "followingCount": 0,
+          "heart": 0,
+          "heartCount": 0,
+          "videoCount": 0,
+          "diggCount": 0,
+          "friendCount": 0
+        },
+        "statsV2": {
+          "followerCount": "0",
+          "followingCount": "0",
+          "heart": "0",
+          "heartCount": "0",
+          "videoCount": "0",
+          "diggCount": "0",
+          "friendCount": "0"
+        },
+        "itemList": []
+      },
+      "shareMeta": {
+        "title": "nemesis on TikTok",
+        "desc": "@cursor 0 Followers, 0 Following, 0 Likes - Watch awesome short videos created by nemesis"
+      },
+      "statusCode": 0,
+      "statusMsg": "",
+      "needFix": false
+    }
+  }
+}

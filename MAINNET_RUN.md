@@ -37,6 +37,9 @@ VETGATE_CELO_NETWORK=mainnet VETGATE_PAY_GUARD_ADDRESS=0xde00a2f23792e3cadbf0088
 | daily_buy | `0xd5be396f1ea528df5ef9e2096a803bccfd60a0f82bca992ca574d5adcf0a3ae6` | x402 https://gateway.usebuy.ai/v1/social/tiktok/profile after vet402 ALLOW utc=2026-11-26 units=5000 bodyKeccak256=0xd945bba3310fd71580c41213a9e436af7f16b502b18f2c1b7cf4c10c5308d174 evidence=evidence/daily-buy/2026-11-26.json | 2026-11-26T12:24:51.885Z |
 | daily_small_use | `0x1071f3b3d3520f25af57bbd90b8d604aac37738d984730abb037cc1518272317` | daily operator ALLOW payWithPermit vet402 utc=2026-11-27 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-27T01:01:56.975Z |
 | daily_buy | `0x76a8b7c6762de71ba375e1364566d0ec90282a53a42f744a860730b5649f843d` | x402 https://gateway.usebuy.ai/v1/social/tiktok/profile after vet402 ALLOW utc=2026-11-27 units=5000 bodyKeccak256=0xcad834e425ace09eeaa38d3f759a7e374262ddac506bb0d8d971bb640585b63f evidence=evidence/daily-buy/2026-11-27.json | 2026-11-27T01:02:05.720Z |
+| usdc_approve_pay_guard | `0x6357ba7b1f470cc34cfaa4d772918cc1f7566ad898efd0ea6af8285d2f0ca2f1` | operator USDC approve PayGuard cap 50000 units (daily) | 2026-11-28T01:01:58.416Z |
+| daily_buy | `0x913832ac9ef7e564be9f648b895db36162fcf5b9286e357ed9a71271289ec963` | x402 https://gateway.usebuy.ai/v1/social/tiktok/profile after vet402 ALLOW utc=2026-11-28 units=5000 bodyKeccak256=0xd17630bef8a77caaa742928490eadb5b5fe8499960bf775f0096e96c3d4de700 evidence=evidence/daily-buy/2026-11-28.json | 2026-11-28T01:02:07.498Z |
+| daily_small_use | `0x10b9c22c779bdcb617242f2d0aa7a9ff3d159a4a2c5db6bbaa774983ffa01751` | daily operator ALLOW payWithPermit vet402 utc=2026-11-28 → 0x20faaca5f980e29639a0fcc6dca6988e18ed333b | 2026-11-28T01:02:27.723Z |
 
 Each successful `scripts/mainnet-run.ts` run appends a row to this table.
 
